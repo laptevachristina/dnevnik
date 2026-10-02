@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Мой дневник</title>
+<meta name="theme-color" content="#F3DEE4">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Дневник">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-name">Мой дневник</div>
+  <div class="top-date" id="topDate"></div>
+</header>
+<main>
+  <section id="tab-cal" class="tab"></section>
+  <section id="tab-food" class="tab"></section>
+  <section id="tab-act" class="tab"></section>
+  <section id="tab-body" class="tab"></section>
+  <section id="tab-prof" class="tab"></section>
+</main>
+<nav class="tabbar" id="tabbar"></nav>
+<noscript>Для работы дневника нужен включённый JavaScript.</noscript>
+<script src="app.js"></script>
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(function(){});
+}
+</script>
+</body>
+</html>
