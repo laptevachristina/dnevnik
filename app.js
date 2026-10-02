@@ -149,6 +149,104 @@ function cabinetCard() {
     '<div class="row"><button class="btn pink" onclick="authSheet(\'reg\')">Создать</button><button class="btn ghost" onclick="authSheet(\'in\')">Войти</button></div></div>';
 }
 
+/* ---------- перенос старых записей ---------- */
+
+function mkDate(y, mo, d) {
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+function parseD(s) {
+  s = String(s).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return mkDate(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})[.\/](\d{1,2})(?:[.\/](\d{2,4}))?$/);
+  if (!m) return null;
+  let y = m[3] ? +m[3] : null;
+  if (y != null && y < 100) y += 2000;
+  if (y == null) {
+    y = new Date().getFullYear();
+    if (mkDate(y, +m[2], +m[1]) > new Date()) y--;
+  }
+  return mkDate(y, +m[2], +m[1]);
+}
+function parsePeriodLine(part) {
+  let s = part.replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  const iso = /^\d{4}-/.test(s);
+  const p = iso ? s.split(/\s+-\s+/) : s.split(/\s*-\s*|\s+до\s+/);
+  const a = parseD(p[0]);
+  if (!a) return null;
+  const b = p.length > 1 ? parseD(p[p.length - 1]) : null;
+  if (p.length > 1 && !b) return null;
+  if (b && b < a) return null;
+  return { a, b: b || null };
+}
+function parseWeightLine(part) {
+  const m = part.match(/(\d{1,2}[.\/]\d{1,2}(?:[.\/]\d{2,4})?|\d{4}-\d{1,2}-\d{1,2})\D{0,5}(\d+[.,]?\d{0,2})/);
+  if (!m) return null;
+  const d = parseD(m[1]);
+  const kg = parseFloat(m[2].replace(',', '.'));
+  if (!d || isNaN(kg) || kg < 25 || kg > 300) return null;
+  return { d, kg };
+}
+function impParse() {
+  const per = [], wgt = [];
+  $('impPer').value.split('\n').forEach(line => {
+    line.split(/[,;]+/).forEach(part => {
+      const r = parsePeriodLine(part);
+      if (r) per.push(r);
+    });
+  });
+  $('impW').value.split('\n').forEach(line => {
+    line.split(/;+/).forEach(part => {
+      const r = parseWeightLine(part);
+      if (r) wgt.push(r);
+    });
+  });
+  return { per, wgt };
+}
+function impCount() {
+  const el = $('impCnt');
+  if (!el) return;
+  const { per, wgt } = impParse();
+  el.textContent = per.length || wgt.length
+    ? 'Нашёл: месячные — ' + per.length + ', вес — ' + wgt.length
+    : '';
+}
+function importHistorySheet() {
+  const dur = (cycleInfo() && cycleInfo().avgDur) || 4;
+  openSheet(
+    '<div class="sheet-head"><b>Перенос старых записей</b><button class="btn small ghost" onclick="closeSheet()">Закрыть</button></div>' +
+    '<div class="hint" style="margin:4px 0 10px">Вставьте списки из заметок одним куском — я разложу по календарю. Понимаю даты: 5.01, 05.01.2026, 2026-01-05 и периоды 5.01-9.01.</div>' +
+    '<label class="f">Месячные — дата или период в строке, можно через запятую</label>' +
+    '<textarea id="impPer" class="inp" rows="5" oninput="impCount()" placeholder="5.01-9.01; 2.02; 2.03-6.03"></textarea>' +
+    '<label class="f">Вес — дата и килограммы, кг писать не обязательно</label>' +
+    '<textarea id="impW" class="inp" rows="4" oninput="impCount()" placeholder="5.01 64,5; 12.01 64,1"></textarea>' +
+    '<div class="hint" id="impCnt" style="margin:8px 0 0"></div>' +
+    '<div style="margin-top:12px"><button class="btn pink" style="width:100%" onclick="impApply()">Добавить в дневник</button></div>' +
+    '<div class="hint" style="margin-top:8px">Год не указан — возьму прошедший. Одна дата месячных отмечает ' + dur + ' дн. (ваша средняя длительность, пока данных нет — 4).</div>'
+  );
+}
+function impApply() {
+  const { per, wgt } = impParse();
+  if (!per.length && !wgt.length) { toast('Не нашёл ни одной даты — проверьте запись'); return; }
+  const dur = (cycleInfo() && cycleInfo().avgDur) || 4;
+  per.forEach(r => {
+    const end = r.b || new Date(r.a.getTime() + (dur - 1) * DAY);
+    for (let dt = new Date(r.a); dt <= end; dt = new Date(dt.getTime() + DAY)) DB.period[dkey(dt)] = 1;
+  });
+  wgt.forEach(r => {
+    const k = dkey(r.d);
+    DB.weight = DB.weight.filter(x => x.d !== k);
+    DB.weight.push({ d: k, kg: Math.round(r.kg * 10) / 10 });
+  });
+  DB.weight.sort((a, b) => a.d < b.d ? -1 : 1);
+  save(); closeSheet();
+  toast('Добавлено: месячные ' + per.length + ' зап., вес ' + wgt.length + ' зап.');
+  if (cur === 'cal') renderCal(); else RENDER[cur]();
+}
+
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -254,7 +352,7 @@ function startVoice(target) {
   rec.onresult = e => {
     let t = '';
     for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
-    if (recTarget === 'food' && $('fName')) $('fName').value = t;
+    if (recTarget === 'food' && $('fName')) { $('fName').value = t; foodLookup(); }
     if (recTarget === 'note' && $('dayNote')) $('dayNote').value = (recBase ? recBase + ' ' : '') + t;
   };
   rec.onend = () => {
@@ -409,32 +507,121 @@ const PRODUCTS = [
   ['Треска запечённая',120],['Лосось запечённый',208],['Горбуша',150],['Креветки',99],['Тунец в собственном соку',96],['Скумбрия',220],['Ролл с лососем',145],
   ['Творог 5%',121],['Творог обезжиренный',71],['Сырники запечённые',195],['Молоко 2,5%',52],['Кефир 1%',40],['Ряженка 2,5%',54],
   ['Йогурт греческий 2%',66],['Йогурт питьевой с сахаром',85],['Сыр твёрдый',350],['Моцарелла',280],['Сулугуни',290],['Сметана 20%',204],['Плавленый сыр',290],
-  ['Яйцо варёное (1 шт ≈ 85 ккал при 55 г)',155],['Омлет',170],['Яичница',200],
+  ['Яйцо варёное',75,'шт'],['Омлет',170],['Яичница',200],['Скрэмбл',160],['Шакшука',120],
   ['Хлеб белый',265],['Хлеб цельнозерновой',247],['Хлебцы',300],['Батон нарезной',270],['Булочка',320],['Круассан',400],['Блины',190],
   ['Печенье',480],['Пряник',350],['Торт бисквитный',350],['Пирожное',400],
   ['Яблоко',52],['Банан',96],['Апельсин',47],['Мандарин',53],['Груша',57],['Виноград',72],['Клубника',33],['Черника',57],['Малина',46],
   ['Арбуз',30],['Дыня',35],['Киви',61],['Авокадо',160],['Персик',46],['Хурма',67],
+  ['Лимон',30],['Грейпфрут',40],['Ананас',50],['Манго',65],['Гранат',75],['Слива',45],['Абрикос',45],['Вишня',50],['Черешня',55],
+  ['Курага',215],['Чернослив',240],['Изюм',280],['Финики',280],['Инжир сушёный',250],
   ['Огурец',15],['Помидор',20],['Салат листовой',15],['Брокколи',34],['Цветная капуста',30],['Морковь',41],['Капуста',28],['Свёкла',43],
-  ['Кабачок',24],['Болгарский перец',27],['Лук',41],['Кукуруза консервированная',96],['Зелёный горошек',73],['Оливки',115],
+  ['Кабачок',24],['Баклажан',24],['Тыква',25],['Шпинат',23],['Редис',20],['Спаржа',20],['Болгарский перец',27],['Лук',41],
+  ['Шампиньоны',27],['Грибы жареные',150],['Стручковая фасоль',31],['Кукуруза консервированная',96],['Кукуруза варёная',96],['Зелёный горошек',73],['Оливки',115],['Батат печёный',90],['Эдамаме',120],
   ['Оливье',198],['Греческий салат',120],['Цезарь с курицей',190],['Сельдь под шубой',200],['Винегрет',90],
-  ['Борщ',49],['Куриный суп',36],['Солянка',80],['Крем-суп из тыквы',45],
+  ['Крабовый салат',150],['Мимоза',190],['Салат с тунцом',180],['Коул-слоу',170],['Свекольный салат',120],['Табуле',120],
+  ['Борщ',49],['Куриный суп',36],['Солянка',80],['Крем-суп из тыквы',45],['Рассольник',55],['Гороховый суп',66],['Уха',46],['Щи',35],['Грибной суп',50],['Минестроне',40],
   ['Масло сливочное',748],['Масло оливковое',884],['Майонез',620],['Грецкие орехи',654],['Миндаль',579],['Кешью',600],['Арахисовая паста',588],['Семечки',580],
-  ['Шоколад молочный',535],['Шоколад тёмный 70%',546],['Зефир',326],['Мармелад',320],['Пастила',310],['Мёд',304],['Сахар',387],['Варенье',260],['Халва',520],['Сгущёнка',320],['Протеиновый батончик',350],
-  ['Кофе американо без сахара',2],['Латте на молоке 2,5%',55],['Капучино',45],['Чай без сахара',1],['Какао на молоке',85],
-  ['Сок апельсиновый',45],['Сок яблочный',46],['Кола',42],['Лимонад',40],
-  ['Вино белое сухое',70],['Вино красное сухое',68],['Пиво светлое',43],['Шампанское',85],
-  ['Пицца',260],['Шаурма',200],['Хумус',166],['Тофу',76],['Соевый соус',53],['Кетчуп',110]
+  ['Фисташки',560],['Кедровые орехи',680],['Пекан',690],['Макадамия',720],['Фундук',650],['Арахис',570],['Кокосовая стружка',360],
+  ['Шоколад молочный',535],['Шоколад тёмный 70%',546],['Белый шоколад',540],['Зефир',326],['Мармелад',320],['Пастила',310],['Мёд',304],['Сахар',387],['Варенье',260],['Халва',520],['Сгущёнка',320],['Протеиновый батончик',350],
+  ['Нуга',400],['Грильяж',500],['Карамель',370],['Ирис',400],['Попкорн',430],['Чипсы картофельные',530],['Сушки',340],['Сухари',350],['Баранки',310],['Вафли',430],
+  ['Мороженое пломбир',230],['Сорбет',120],['Медовик',400],['Наполеон',420],['Шарлотка',200],['Тирамису',280],['Чизкейк',320],['Панна-котта',200],['Брауни',430],
+  ['Кофе американо без сахара',2],['Кофе с молоком',30],['Латте на молоке 2,5%',55],['Капучино',45],['Чай без сахара',1],['Какао на молоке',85],
+  ['Матча латте',130],['Раф',190,'порция'],['Флэт уайт',90,'порция'],['Мокко',240,'порция'],['Фраппе',300,'порция'],['Чай с сахаром',25,'порция'],
+  ['Сок апельсиновый',45],['Сок яблочный',46],['Кола',42],['Кола, средний стакан',170,'порция'],['Лимонад',40],['Энергетик',45],['Компот',90],['Морс',45],['Кисель',90],
+  ['Молочный коктейль',330,'порция'],['Смузи',200,'порция'],
+  ['Вино белое сухое',70],['Вино красное сухое',68],['Пиво светлое',43],['Шампанское',85],['Сидр',50],['Вермут',150],['Глинтвейн',90],
+  ['Водка',230],['Коньяк',240],['Виски',240],['Ром',230],['Джин',250],['Текила',230],['Ликёр',330],['Настойка',210],
+  ['Пицца',260],['Пицца, кусок',270,'шт'],['Шаурма',200],['Хумус',166],['Тофу',76],['Соевый соус',53],['Кетчуп',110],
+  ['Горчица',120],['Соус барбекю',110],['Соус сырный',300],['Соус тартар',340],['Соус ранч',430],['Соус песто',450],['Соус бешамель',140],['Спайси-майо',600],['Соус унаги',230],['Гуакамоле',160],
+  ['Сливки 10%',120],['Сливки 33%',300],['Рикотта',174],['Фета',264],['Пармезан',392],['Брынза',260],['Творожный сыр',253],['Молоко 3,2%',59],['Айран',35],['Топлёное молоко',67],['Сыворотка',20],
+  ['Кокосовое молоко (банка, густое)',200],['Кокосовое молоко (напиток)',30],['Овсяное молоко',45],['Миндальное молоко',15],
+  ['Ветчина',240],['Колбаса докторская',250],['Салями',400],['Сервелат',350],['Карбонад',160],['Буженина',240],['Баранина запечённая',280],['Утка запечённая',330],['Кролик',170],
+  ['Сельдь',160],['Форель запечённая',150],['Сёмга солёная',190],['Кальмар',100],['Мидии',80],['Икра красная',230],['Минтай',75],['Мойва',160],['Дорадо',100],['Сибас',105],['Устрицы',70],['Осьминог',80],['Краб',95],
+  ['Фасоль отварная',123],['Чечевица отварная',110],['Нут отварной',130],['Маш отварной',100],['Овсяные хлопья сухие',370],['Мюсли',370],['Гранола',430],['Кукурузные хлопья',360],
+  ['Плов',190],['Голубцы',150],['Долма',180],['Бефстроганов',180],['Драники',220],['Запеканка творожная',180],['Холодец',90],['Язык говяжий',230],['Печень куриная',140],
+  ['Шашлык из курицы',180],['Шашлык из свинины',290],['Люля-кебаб',230],['Вареники с творогом',200],['Хачапури по-аджарски',270],
+  ['Манная каша',95],['Пшённая каша',120],['Перловая каша',110],['Картофельное пюре',105],['Овощи гриль',120],['Тушёные овощи',80],
+  ['Паста карбонара',330],['Паста болоньезе',160],['Лазанья',200],['Ризотто',150],['Паэлья',150],['Гаспачо',40],['Тортилья испанская',200],
+  ['Хамон',240],['Чоризо',400],['Фалафель',330],['Мусака',150],['Рататуй',80],['Шницель',250],['Гуляш',150],['Дофинуа',170],
+  ['Кускус отварной',110],['Бриошь',350],['Багет',270],['Пита',275],['Лаваш тонкий',270],['Панкейки',230],['Вафли бельгийские',300],
+  ['Биг Мак',257,'шт'],['Воппер',660,'шт'],['Гамбургер',253,'шт'],['Чизбургер',302,'шт'],['Двойной чизбургер',450,'шт'],['МакЧикен',470,'шт'],['Филе-о-фиш',330,'шт'],
+  ['Наггетс куриный',48,'шт'],['Картошка фри, порция',340,'порция'],['МакФлурри',330,'порция'],['Хот-дог',290,'шт'],
+  ['Шаурма классическая',450,'порция'],['Дёнер-кебаб',450,'порция'],['Сэндвич с курицей',380,'шт'],['Буррито',500,'шт'],['Тако',190,'шт'],['Кесадилья',380,'порция'],
+  ['Ролл Филадельфия, кусок',60,'шт'],['Ролл Калифорния, кусок',55,'шт'],['Суши с лососем, кусок',45,'шт'],['Онигири',160,'шт'],
+  ['Димсам',45,'шт'],['Спринг-ролл',120,'шт'],['Бао со свининой',220,'шт'],
+  ['Рамен, порция',470,'порция'],['Фо бо, порция',300,'порция'],['Пад-тай, порция',400,'порция'],['Том ям, порция',250,'порция'],
+  ['Карри с рисом, порция',480,'порция'],['Жареная лапша с овощами, порция',450,'порция'],['Жареный рис, порция',480,'порция'],
+  ['Эскимо',180,'шт'],['Сникерс',250,'шт'],['Марс',230,'шт'],['Баунти',280,'шт'],['Кит-кат',210,'шт'],['Донат',280,'шт'],['Маффин',400,'шт'],['Эклер',270,'шт'],
+  ['Чебурек',320,'шт'],['Беляш',330,'шт'],['Самса',450,'шт'],['Пирожок с картошкой',250,'шт'],['Пирожок с мясом',330,'шт'],['Сосиска в тесте',330,'шт'],['Ватрушка',300,'шт'],['Котлета по-киевски',450,'шт'],
+  ['Макарун (печенье)',95,'шт'],['Эспрессо',3,'шт']
 ];
 
 function setFoodDate(v) { foodDate = v || todayKey(); renderFood(); }
 
+/* умный подбор продукта по названию */
+const STOP = new Set(['на','с','со','и','в','из','без','для','по','от','до','за','the']);
+const stemW = w => w.replace(/(ами|ями|ого|его|ому|ему|ых|их|ая|яя|ое|ее|ые|ие|ой|ей|ий|ый|ом|ем|ую|юю|ов|ев|ам|ях|ах|у|ю|а|я|ы|и|е|о|ь)$/,'');
+const wordsOf = s => String(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9%,.\-]+/gi, ' ').split(' ').filter(w => w.length > 1 && !STOP.has(w));
+function prodMatch(q) {
+  const qw = wordsOf(q).map(stemW).filter(Boolean);
+  if (!qw.length) return -1;
+  let best = -1, bestS = 0;
+  PRODUCTS.forEach((p, i) => {
+    const nw = wordsOf(p[0]).map(stemW);
+    let s = 0, hit = 0;
+    qw.forEach(qw1 => {
+      const exact = nw.some(n => n === qw1);
+      const pref = nw.some(n => qw1.length >= 3 && n.length >= 3 && (n.startsWith(qw1) || qw1.startsWith(n)));
+      if (exact) { s += 10; hit++; }
+      else if (pref) s += 6;
+    });
+    if (hit === qw.length && hit > 0) s += 15;
+    if (nw.length && qw.length && (nw[0] === qw[0] || (qw[0].length >= 3 && nw[0].startsWith(qw[0])))) s += 2;
+    s -= nw.length * 0.4;
+    if (s > bestS) { bestS = s; best = i; }
+  });
+  return bestS >= 9 ? best : -1;
+}
+let fMatchI = -1;
+function foodLookup() {
+  const el = $('fName'), sug = $('fSug');
+  if (!el) return;
+  let q = el.value, amtSet = null;
+  const mp = q.match(/(\d{1,3})\s*(шт|штук|порци)/i);
+  const mg = q.match(/(\d{1,4})\s*(гр|грамм|г|мл)\b/i);
+  if (mp) { amtSet = +mp[1]; q = q.replace(mp[0], ' '); }
+  else if (mg) { amtSet = +mg[1]; q = q.replace(mg[0], ' '); }
+  fMatchI = prodMatch(q);
+  if (fMatchI >= 0) {
+    const p = PRODUCTS[fMatchI], per100 = !p[2];
+    if (amtSet == null) amtSet = per100 ? 100 : 1;
+    if ($('fAmt')) $('fAmt').value = amtSet;
+    if ($('fAmtLbl')) $('fAmtLbl').textContent = per100 ? 'г' : p[2];
+    if ($('fKcal')) $('fKcal').value = per100 ? Math.round(p[1] * amtSet / 100) : Math.round(p[1] * amtSet);
+    if (sug) sug.innerHTML = 'Нашла: <b>' + esc(p[0]) + '</b> — ' + p[1] + (per100 ? ' ккал/100 г' : ' ккал за 1 ' + p[2]) + '. Калории подставила, поправьте при желании.';
+  } else {
+    if (sug) sug.textContent = 'В справочнике не нашлось — впишите калории сами, запомню как есть.';
+  }
+}
+function foodCalc() {
+  if (fMatchI < 0) return;
+  const p = PRODUCTS[fMatchI];
+  const a = num($('fAmt') && $('fAmt').value) || 0;
+  if ($('fKcal')) $('fKcal').value = Math.round(p[2] ? p[1] * a : p[1] * a / 100);
+}
 function addFood() {
   const name = $('fName').value.trim();
   const kcal = num($('fKcal').value);
   if (!name) { toast('Напишите, что съели'); return; }
   if (isNaN(kcal) || kcal < 0 || kcal > 5000) { toast('Проверьте калории'); return; }
   if (!DB.food[foodDate]) DB.food[foodDate] = [];
-  DB.food[foodDate].push({ id: 'i' + Date.now() + Math.random().toString(36).slice(2, 6), name, kcal: Math.round(kcal) });
+  let shown = name;
+  if (fMatchI >= 0) {
+    const p = PRODUCTS[fMatchI];
+    const a = num($('fAmt') && $('fAmt').value);
+    shown = p[0] + (a ? ', ' + Math.round(a) + (p[2] ? ' ' + p[2] : ' г') : '');
+  }
+  DB.food[foodDate].push({ id: 'i' + Date.now() + Math.random().toString(36).slice(2, 6), name: shown, kcal: Math.round(kcal) });
   save(); renderFood();
 }
 function delFood(id) {
@@ -446,8 +633,8 @@ function delFood(id) {
 function openProducts() {
   openSheet(
     '<div class="sheet-head"><b>Справочник продуктов</b><button class="btn small ghost" onclick="closeSheet()">Готово</button></div>' +
-    '<input class="inp search" placeholder="Поиск: творог, банан…" oninput="filterProds(this.value)">' +
-    '<div class="hint" style="margin:6px 0 0">Калории на 100 г — впишите свой вес в граммах и нажмите «+». Значения приблизительные.</div>' +
+    '<input class="inp search" placeholder="Поиск: творог, биг мак…" oninput="filterProds(this.value)">' +
+    '<div class="hint" style="margin:6px 0 0">Большинство — на 100 г; «шт» и «порция» — за штуку или порцию целиком. Значения приблизительные.</div>' +
     '<div id="prodList">' + prodListHTML('') + '</div>'
   );
 }
@@ -457,8 +644,8 @@ function prodListHTML(q) {
   if (!f.length) return '<div class="empty">Ничего не нашлось — добавьте вручную</div>';
   return f.map(({ p, i }) =>
     '<div class="prod">' +
-    '<div style="flex:1"><b>' + p[0] + '</b><div class="hint" style="margin:0">~' + p[1] + ' ккал / 100 г</div></div>' +
-    '<input id="g' + i + '" class="g" type="number" inputmode="decimal" min="0" value="100" oninput="recalc(' + i + ')">' +
+    '<div style="flex:1"><b>' + p[0] + '</b><div class="hint" style="margin:0">~' + p[1] + ' ккал' + (p[2] ? ' / ' + p[2] : ' / 100 г') + '</div></div>' +
+    '<input id="g' + i + '" class="g" type="number" inputmode="decimal" min="0" value="' + (p[2] ? 1 : 100) + '" oninput="recalc(' + i + ')">' +
     '<span id="k' + i + '" class="kc">' + p[1] + '</span>' +
     '<button class="btn small pink" onclick="addProd(' + i + ')" aria-label="Добавить">+</button>' +
     '</div>'
@@ -467,14 +654,16 @@ function prodListHTML(q) {
 function filterProds(v) { const l = $('prodList'); if (l) l.innerHTML = prodListHTML(v); }
 function recalc(i) {
   const g = num($('g' + i).value) || 0;
-  $('k' + i).textContent = Math.round(PRODUCTS[i][1] * g / 100);
+  const p = PRODUCTS[i];
+  $('k' + i).textContent = Math.round(p[2] ? p[1] * g : p[1] * g / 100);
 }
 function addProd(i) {
   const g = num($('g' + i).value);
-  if (!g || g <= 0) { toast('Укажите граммы'); return; }
-  const kcal = Math.round(PRODUCTS[i][1] * g / 100);
+  if (!g || g <= 0) { toast('Сколько добавляем?'); return; }
+  const p = PRODUCTS[i];
+  const kcal = Math.round(p[2] ? p[1] * g : p[1] * g / 100);
   if (!DB.food[foodDate]) DB.food[foodDate] = [];
-  DB.food[foodDate].push({ id: 'i' + Date.now() + Math.random().toString(36).slice(2, 6), name: PRODUCTS[i][0] + ', ' + Math.round(g) + ' г', kcal });
+  DB.food[foodDate].push({ id: 'i' + Date.now() + Math.random().toString(36).slice(2, 6), name: p[0] + ', ' + Math.round(g) + (p[2] ? ' ' + p[2] : ' г'), kcal });
   save(); toast('Добавлено: ' + kcal + ' ккал'); renderFood();
 }
 
@@ -517,15 +706,18 @@ RENDER.food = function () {
     '<div class="card">' +
     '<h3>Добавить</h3>' +
     '<div class="row" style="align-items:stretch">' +
-    '<input id="fName" class="inp" placeholder="Блюдо или продукт">' +
+    '<input id="fName" class="inp" placeholder="Блюдо или продукт" oninput="foodLookup()">' +
     '<button class="mic" id="micFood" onclick="startVoice(\'food\')" aria-label="Надиктовать блюдо">' + MIC + '</button>' +
     '</div>' +
-    '<div class="row" style="margin-top:10px">' +
+    '<div class="hint" id="fSug" style="margin:6px 0 0"></div>' +
+    '<div class="row" style="margin-top:8px;align-items:center">' +
+    '<input id="fAmt" class="inp" type="number" inputmode="decimal" value="100" oninput="foodCalc()" aria-label="Количество">' +
+    '<span id="fAmtLbl" style="flex:0 0 auto;color:var(--muted);font-size:13px">г</span>' +
     '<input id="fKcal" class="inp" type="number" inputmode="decimal" placeholder="ккал">' +
-    '<button class="btn" onclick="addFood()">Добавить</button>' +
+    '<button class="btn" style="flex:0 0 auto" onclick="addFood()">Добавить</button>' +
     '</div>' +
-    '<div style="margin-top:10px"><button class="btn pink" style="width:100%" onclick="openProducts()">Справочник продуктов</button></div>' +
-    '<div class="hint">В справочнике ~110 привычных продуктов: граммы пересчитываются в калории сами.</div>' +
+    '<div style="margin-top:10px"><button class="btn pink" style="width:100%" onclick="openProducts()">Справочник: ' + PRODUCTS.length + ' продуктов</button></div>' +
+    '<div class="hint">Надиктуйте или впишите блюдо — калории подставлю сама. Русская, европейская, азиатская кухня и фастфуд. Значения приблизительные.</div>' +
     '</div>';
 };
 
@@ -898,6 +1090,7 @@ RENDER.prof = function () {
     '<div class="card"><h2>Мои данные</h2>' +
     '<div class="hint" style="margin:0 0 10px">Дней с записями о еде: ' + nFood + ' · записей веса: ' + nW + ' · отмеченных дней цикла: ' + nP + '</div>' +
     '<div class="row"><button class="btn pink" onclick="exportData()">Скачать копию</button><button class="btn ghost" onclick="showDataText()">Текстом</button></div>' +
+    '<button class="btn ghost" style="margin-top:8px;width:100%" onclick="importHistorySheet()">Перенести старые записи</button>' +
     '<label class="f">Восстановить из файла</label><input class="inp" type="file" accept=".json,application/json" onchange="importFile(this.files[0])">' +
     '<div class="hint">Все записи хранятся в этом приложении на телефоне. Раз в месяц скачивайте копию — это файл со всеми данными, ничего не потеряется.</div>' +
     '</div>';

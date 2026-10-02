@@ -17,7 +17,7 @@ TOKENS_F = os.path.join(DATA, 'tokens.json')
 
 ORIGIN = 'https://laptevachristina.github.io'
 MAX_DOC = 2_000_000
-TOKEN_TTL = 60 * 24 * 3600  # 60 дней
+TOKEN_TTL = 180 * 24 * 3600  # протухает только если не заходить полгода
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = MAX_DOC + 4096
@@ -69,8 +69,15 @@ def new_token(login):
 def auth():
     h = request.headers.get('Authorization', '')
     tok = h[7:] if h.startswith('Bearer ') else ''
-    v = jload(TOKENS_F, {}).get(tok)
-    return v['login'] if v else None
+    tokens = jload(TOKENS_F, {})
+    v = tokens.get(tok)
+    if not v:
+        return None
+    now = int(time.time())
+    if now - v['t'] > 86400:  # продлеваем сессию раз в сутки — живёт, пока app открывают
+        v['t'] = now
+        jsave(TOKENS_F, tokens)
+    return v['login']
 
 
 @app.route('/healthz')
