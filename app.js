@@ -351,32 +351,43 @@ function cycleInfo() {
 const MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>';
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, recBase = '', recTarget = null;
+let rec = null, recBase = '', recTarget = null, recGot = false;
 
 function startVoice(target) {
   if (!SR) { toast('Этот браузер не умеет распознавать речь — попробуйте Safari или Chrome'); return; }
   if (rec) { try { rec.stop(); } catch (e) {} return; }
   recTarget = target;
   recBase = target === 'note' && $('dayNote') ? $('dayNote').value.trim() : '';
+  recGot = false;
   rec = new SR();
   rec.lang = 'ru-RU';
   rec.interimResults = true;
   rec.maxAlternatives = 1;
   rec.onresult = e => {
+    recGot = true;
     let t = '';
     for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
     if (recTarget === 'food' && $('fName')) { $('fName').value = t; foodLookup(); }
     if (recTarget === 'note' && $('dayNote')) $('dayNote').value = (recBase ? recBase + ' ' : '') + t;
   };
   rec.onend = () => {
+    const heardNothing = !recGot;
     rec = null; micUI(false);
     if (recTarget === 'note' && $('dayNote')) onNoteInput($('dayNote').value);
+    if (heardNothing) toast('Ничего не расслышала — говорите чуть громче у самого телефона и нажмите микрофон ещё раз');
   };
   rec.onerror = e => {
+    const msg = {
+      'not-allowed': 'Разрешите доступ к микрофону',
+      'network': 'Распознаванию нужен интернет — проверьте сеть и нажмите микрофон ещё раз',
+      'no-speech': 'Не расслышала — говорите громче, после паузы нажмите микрофон снова',
+      'audio-capture': 'Микрофон не найден'
+    }[e.error];
     rec = null; micUI(false);
-    toast(e.error === 'not-allowed' ? 'Разрешите доступ к микрофону' : 'Не получилось распознать речь');
+    if (msg) toast(msg);
   };
   micUI(true);
+  if (recTarget === 'food' && $('fSug')) $('fSug').textContent = 'Слушаю — говорите…';
   try { rec.start(); toast('Говорите — я записываю'); }
   catch (e) { rec = null; micUI(false); }
 }
@@ -577,7 +588,7 @@ const PRODUCTS = [
   ['Карри с рисом, порция',480,'порция'],['Жареная лапша с овощами, порция',450,'порция'],['Жареный рис, порция',480,'порция'],
   ['Эскимо',180,'шт'],['Сникерс',250,'шт'],['Марс',230,'шт'],['Баунти',280,'шт'],['Кит-кат',210,'шт'],['Донат',280,'шт'],['Маффин',400,'шт'],['Эклер',270,'шт'],
   ['Чебурек',320,'шт'],['Беляш',330,'шт'],['Самса',450,'шт'],['Пирожок с картошкой',250,'шт'],['Пирожок с мясом',330,'шт'],['Сосиска в тесте',330,'шт'],['Ватрушка',300,'шт'],['Котлета по-киевски',450,'шт'],
-  ['Макарун (печенье)',95,'шт'],['Эспрессо',3,'шт']
+  ['Макарун (печенье)',95,'шт'],['Эспрессо',3,'шт'],['Цикорий растворимый (порошок)',373],['Цикорий напиток (без сахара)',6]
 ];
 
 function setFoodDate(v) { foodDate = v || todayKey(); renderFood(); }
@@ -610,19 +621,32 @@ let fMatchI = -1;
 function foodLookup() {
   const el = $('fName'), sug = $('fSug');
   if (!el) return;
-  let q = el.value, amtSet = null;
-  const mp = q.match(/(\d{1,3})\s*(шт|штук|порци)/i);
-  const mg = q.match(/(\d{1,4})\s*(гр|грамм|г|мл)\b/i);
-  if (mp) { amtSet = +mp[1]; q = q.replace(mp[0], ' '); }
-  else if (mg) { amtSet = +mg[1]; q = q.replace(mg[0], ' '); }
+  let q = el.value, amtSet = null, unit = '', amtNote = '';
+  let m = q.match(/(\d{1,3})\s*(?:чайн[а-яё]*|стол[а-яё]*|десертн[а-яё]*)?\s*(?:ч\.?\s*л\.?|ст\.?\s*л\.?|ложк[а-яё]*)/i);
+  if (m) { // чайная ≈ 5 г, десертная ≈ 10 г, столовая ≈ 15 г
+    const one = /стол/i.test(m[0]) ? 15 : /десертн/i.test(m[0]) ? 10 : 5;
+    const nm = /стол/i.test(m[0]) ? 'ст. л.' : /десертн/i.test(m[0]) ? 'дес. л.' : 'ч. л.';
+    amtSet = +m[1] * one; unit = 'г';
+    amtNote = m[1] + ' ' + nm + ' ≈ ' + amtSet + ' г. ';
+    q = q.replace(m[0], ' ');
+  }
+  if (amtSet == null) {
+    m = q.match(/(\d{1,3})\s*(штук[а-яё]*|шт(?![а-яё])|порци[а-яё]*)/i);
+    if (m) { amtSet = +m[1]; unit = 'шт'; q = q.replace(m[0], ' '); }
+  }
+  if (amtSet == null && (m = q.match(/(\d{1,4}(?:[.,]\d+)?)\s*(миллилитр[а-яё]*|мл(?![а-яё]))/i))) { amtSet = Math.round(+m[1].replace(',', '.')); unit = 'мл'; q = q.replace(m[0], ' '); }
+  if (amtSet == null && (m = q.match(/(\d{1,3}(?:[.,]\d+)?)\s*(литр[а-яё]*|л(?![а-яё]))/i))) { amtSet = Math.round(+m[1].replace(',', '.') * 1000); unit = 'мл'; q = q.replace(m[0], ' '); }
+  if (amtSet == null && (m = q.match(/(\d{1,4}(?:[.,]\d+)?)\s*(грамм[а-яё]*|гр(?![а-яё])|г(?![а-яё]))/i))) { amtSet = Math.round(+m[1].replace(',', '.')); unit = 'г'; q = q.replace(m[0], ' '); }
   fMatchI = prodMatch(q);
   if (fMatchI >= 0) {
-    const p = PRODUCTS[fMatchI], per100 = !p[2];
+    const p = PRODUCTS[fMatchI];
+    const per100 = !p[2] || unit === 'г' || unit === 'мл';
     if (amtSet == null) amtSet = per100 ? 100 : 1;
+    if (per100 && !unit) unit = 'г';
     if ($('fAmt')) $('fAmt').value = amtSet;
-    if ($('fAmtLbl')) $('fAmtLbl').textContent = per100 ? 'г' : p[2];
+    if ($('fAmtLbl')) $('fAmtLbl').textContent = per100 ? unit : p[2];
     if ($('fKcal')) $('fKcal').value = per100 ? Math.round(p[1] * amtSet / 100) : Math.round(p[1] * amtSet);
-    if (sug) sug.innerHTML = 'Нашла: <b>' + esc(p[0]) + '</b> — ' + p[1] + (per100 ? ' ккал/100 г' : ' ккал за 1 ' + p[2]) + '. Калории подставила, поправьте при желании.';
+    if (sug) sug.innerHTML = amtNote + 'Нашла: <b>' + esc(p[0]) + '</b> — ' + p[1] + (per100 ? ' ккал/100 ' + unit : ' ккал за 1 ' + p[2]) + '. Калории подставила, поправьте при желании.';
   } else {
     if (sug) sug.textContent = 'В справочнике не нашлось — впишите калории сами, запомню как есть.';
   }
@@ -741,7 +765,7 @@ RENDER.food = function () {
     '<button class="btn" style="flex:0 0 auto" onclick="addFood()">Добавить</button>' +
     '</div>' +
     '<div style="margin-top:10px"><button class="btn pink" style="width:100%" onclick="openProducts()">Справочник: ' + PRODUCTS.length + ' продуктов</button></div>' +
-    '<div class="hint">Надиктуйте или впишите блюдо — калории подставлю сама. Русская, европейская, азиатская кухня и фастфуд. Значения приблизительные.</div>' +
+    '<div class="hint">Надиктуйте или впишите блюдо — калории подставлю сама. Количество пишите как удобно: 150 г, 200 мл, 0,5 л, 2 ч. л., 1 ст. л., 2 шт. Значения приблизительные.</div>' +
     '</div>';
 };
 
