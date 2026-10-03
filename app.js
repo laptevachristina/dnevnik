@@ -767,15 +767,32 @@ async function toggleSensor() {
   sen.date = todayKey();
   sen.count = (DB.steps[sen.date] && DB.steps[sen.date].s) || 0;
   window.addEventListener('devicemotion', onMotion);
-  toast('Шагомер включён — считает, пока приложение открыто');
+  keepAwake(true);
+  toast('Шагомер включён — экран не погаснет, телефон можно в карман');
   renderAct();
 }
 function stopSensor() {
   sen.on = false;
   window.removeEventListener('devicemotion', onMotion);
+  keepAwake(false);
   persistSensor();
   toast('Шагомер остановлен');
 }
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && 'wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!on && wakeLock) {
+      await wakeLock.release();
+      wakeLock = null;
+    }
+  } catch (e) { /* браузер не умеет — считаем как раньше */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && sen.on) keepAwake(true);
+});
 function onMotion(e) {
   const a = e.accelerationIncludingGravity;
   if (!a || a.x == null) return;
@@ -887,7 +904,7 @@ RENDER.act = function () {
     '<input id="stepsAdd" class="inp" type="number" inputmode="numeric" placeholder="Например, 2500">' +
     '<button class="btn pink" onclick="addStepsManual()">+ шаги</button>' +
     '</div>' +
-    '<div class="hint">Шагомер считает, пока приложение открыто на экране. Точное число за весь день можно посмотреть в «Здоровье» на телефоне и вписать сюда.</div>' +
+    '<div class="hint">Пока шагомер включён, экран не гаснет — телефон в кармане продолжает считать. Закрыли приложение или погасили экран сами — счёт встал: точное число за день смотрите в «Здоровье» и добавляйте кнопкой «+ шаги».</div>' +
     '</div>' +
     '<div class="card">' +
     '<h2>Неделя шагов</h2>' + barChart7() +
