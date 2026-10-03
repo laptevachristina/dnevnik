@@ -329,7 +329,10 @@ function cycleInfo() {
   const nextStart = avgLen ? dkey(new Date(parseKey(lastStart).getTime() + avgLen * DAY)) : null;
   const cycleDay = Math.floor((Date.now() - parseKey(lastStart).getTime()) / DAY) + 1;
   const pred = new Set();
-  if (nextStart) for (let i = 0; i < avgDur; i++) pred.add(dkey(new Date(parseKey(nextStart).getTime() + i * DAY)));
+  if (nextStart) for (let c = 0; c < 6; c++) {
+    const s = new Date(parseKey(nextStart).getTime() + c * avgLen * DAY);
+    for (let i = 0; i < avgDur; i++) pred.add(dkey(new Date(s.getTime() + i * DAY)));
+  }
   return { count: cl.length, avgLen, avgDur, lastStart, nextStart, cycleDay, pred };
 }
 
@@ -389,6 +392,11 @@ const TABS = [
 ];
 let cur = 'cal';
 const RENDER = {};
+const renderCal = () => RENDER.cal();
+const renderFood = () => RENDER.food();
+const renderAct = () => RENDER.act();
+const renderBody = () => RENDER.body();
+const renderProf = () => RENDER.prof();
 
 function showTab(id) {
   cur = id;
@@ -469,6 +477,12 @@ RENDER.cal = function () {
       const daysTo = Math.round((parseKey(ci.nextStart) - new Date(new Date().toDateString())) / DAY);
       lines.push('Сегодня — ' + ci.cycleDay + '-й день цикла. Цикл в среднем ' + ci.avgLen + ' дн., месячные ~' + ci.avgDur + ' дн.');
       lines.push('Следующие: ориентировочно ' + parseKey(ci.nextStart).getDate() + ' ' + MONTHS[parseKey(ci.nextStart).getMonth()] + (daysTo > 0 ? ' (через ' + daysTo + ' дн.)' : ''));
+      const nexts = [];
+      for (let c = 0; c < 3; c++) {
+        const d = new Date(parseKey(ci.nextStart).getTime() + c * ci.avgLen * DAY);
+        nexts.push(d.getDate() + ' ' + MONTHS[d.getMonth()]);
+      }
+      lines.push('Прогноз на три цикла: ' + nexts.join(' · ') + '. Пунктиром отмечен и на полгода вперёд в календаре.');
     } else {
       lines.push('Сегодня — ' + ci.cycleDay + '-й день цикла. Отметьте следующие месячные — посчитаю длину цикла.');
     }
