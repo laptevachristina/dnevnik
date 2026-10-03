@@ -80,9 +80,10 @@ async function pullNow(silent) {
     return r;
   } catch (e) { if (!silent) toast('Нет связи с сервером'); return null; }
 }
-async function afterLogin(r) {
+async function afterLogin(r, mode) {
   token = r.token; myLogin = r.login;
   localStorage.setItem(TKEY, token); localStorage.setItem(LKEY, myLogin);
+  closeSheet();
   const p = await pullNow(true);
   if (p && p.doc && hasLocalData()) {
     openSheet(
@@ -95,12 +96,12 @@ async function afterLogin(r) {
   }
   if (p && p.doc) {
     applyDoc(p.doc);
-    toast('Записи загружены');
+    toast('Записи загружены. Вы вошли как ' + r.login);
   } else if (hasLocalData()) {
     pushNow(true);
-    toast('Кабинет готов, записи отправлены на сервер');
+    toast((mode === 'reg' ? 'Кабинет создан' : 'Вход выполнен') + ', записи отправлены на сервер');
   } else {
-    toast('Кабинет готов');
+    toast((mode === 'reg' ? 'Кабинет создан' : 'Вход выполнен') + '. Вы вошли как ' + r.login);
   }
   RENDER[cur]();
 }
@@ -117,7 +118,7 @@ async function doLogin(mode) {
   if (!l || !p) { toast('Заполните логин и пароль'); return; }
   try {
     const r = await api(mode === 'reg' ? '/reg' : '/login', { login: l, password: p });
-    if (r.ok) afterLogin(r); else toast(r.error || 'Не получилось');
+    if (r.ok) afterLogin(r, mode); else toast(r.error || 'Не получилось');
   } catch (e) { toast('Нет связи с сервером'); }
 }
 function logoutCabinet() {
