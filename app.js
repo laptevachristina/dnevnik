@@ -907,7 +907,7 @@ RENDER.act = function () {
 
 /* ---------- тело ---------- */
 
-const MEAS = [['chest','Грудь'],['waist','Талия'],['hips','Бёдра'],['thigh','Нога'],['arm','Рука']];
+const MEAS = [['chest','Грудь'],['waist','Талия'],['hips','Бёдра'],['thigh','Бедро'],['arm','Рука']];
 let curMeasure = 'waist';
 const CHARTS = {};
 
