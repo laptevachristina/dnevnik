@@ -1,4 +1,4 @@
-const CACHE = 'dnevnik-v10';
+const CACHE = 'dnevnik-v11';
 const ASSETS = [
   './',
   './index.html',

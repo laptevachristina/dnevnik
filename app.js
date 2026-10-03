@@ -374,6 +374,7 @@ function startVoice(target) {
     const heardNothing = !recGot;
     rec = null; micUI(false);
     if (recTarget === 'note' && $('dayNote')) onNoteInput($('dayNote').value);
+    if (recTarget === 'food' && recGot && $('fName') && $('fName').value.trim()) addFoodList(true);
     if (heardNothing) toast('Ничего не расслышала — говорите чуть громче у самого телефона и нажмите микрофон ещё раз');
   };
   rec.onerror = e => {
@@ -618,37 +619,41 @@ function prodMatch(q) {
   return bestS >= 9 ? best : -1;
 }
 let fMatchI = -1;
-function foodLookup() {
-  const el = $('fName'), sug = $('fSug');
-  if (!el) return;
-  let q = el.value, amtSet = null, unit = '', amtNote = '';
+function parseFood(q) {
+  let amt = null, unit = '', note = '';
   let m = q.match(/(\d{1,3})\s*(?:чайн[а-яё]*|стол[а-яё]*|десертн[а-яё]*)?\s*(?:ч\.?\s*л\.?|ст\.?\s*л\.?|ложк[а-яё]*)/i);
   if (m) { // чайная ≈ 5 г, десертная ≈ 10 г, столовая ≈ 15 г
     const one = /стол/i.test(m[0]) ? 15 : /десертн/i.test(m[0]) ? 10 : 5;
     const nm = /стол/i.test(m[0]) ? 'ст. л.' : /десертн/i.test(m[0]) ? 'дес. л.' : 'ч. л.';
-    amtSet = +m[1] * one; unit = 'г';
-    amtNote = m[1] + ' ' + nm + ' ≈ ' + amtSet + ' г. ';
+    amt = +m[1] * one; unit = 'г';
+    note = m[1] + ' ' + nm + ' ≈ ' + amt + ' г. ';
     q = q.replace(m[0], ' ');
   }
-  if (amtSet == null) {
+  if (amt == null) {
     m = q.match(/(\d{1,3})\s*(штук[а-яё]*|шт(?![а-яё])|порци[а-яё]*)/i);
-    if (m) { amtSet = +m[1]; unit = 'шт'; q = q.replace(m[0], ' '); }
+    if (m) { amt = +m[1]; unit = 'шт'; q = q.replace(m[0], ' '); }
   }
-  if (amtSet == null && (m = q.match(/(\d{1,4}(?:[.,]\d+)?)\s*(миллилитр[а-яё]*|мл(?![а-яё]))/i))) { amtSet = Math.round(+m[1].replace(',', '.')); unit = 'мл'; q = q.replace(m[0], ' '); }
-  if (amtSet == null && (m = q.match(/(\d{1,3}(?:[.,]\d+)?)\s*(литр[а-яё]*|л(?![а-яё]))/i))) { amtSet = Math.round(+m[1].replace(',', '.') * 1000); unit = 'мл'; q = q.replace(m[0], ' '); }
-  if (amtSet == null && (m = q.match(/(\d{1,4}(?:[.,]\d+)?)\s*(грамм[а-яё]*|гр(?![а-яё])|г(?![а-яё]))/i))) { amtSet = Math.round(+m[1].replace(',', '.')); unit = 'г'; q = q.replace(m[0], ' '); }
-  fMatchI = prodMatch(q);
+  if (amt == null && (m = q.match(/(\d{1,4}(?:[.,]\d+)?)\s*(миллилитр[а-яё]*|мл(?![а-яё]))/i))) { amt = Math.round(+m[1].replace(',', '.')); unit = 'мл'; q = q.replace(m[0], ' '); }
+  if (amt == null && (m = q.match(/(\d{1,3}(?:[.,]\d+)?)\s*(литр[а-яё]*|л(?![а-яё]))/i))) { amt = Math.round(+m[1].replace(',', '.') * 1000); unit = 'мл'; q = q.replace(m[0], ' '); }
+  if (amt == null && (m = q.match(/(\d{1,4}(?:[.,]\d+)?)\s*(грамм[а-яё]*|гр(?![а-яё])|г(?![а-яё]))/i))) { amt = Math.round(+m[1].replace(',', '.')); unit = 'г'; q = q.replace(m[0], ' '); }
+  return { i: prodMatch(q), amt, unit, note };
+}
+function foodLookup() {
+  const el = $('fName'), sug = $('fSug');
+  if (!el) return;
+  const r = parseFood(el.value);
+  fMatchI = r.i;
   if (fMatchI >= 0) {
     const p = PRODUCTS[fMatchI];
-    const per100 = !p[2] || unit === 'г' || unit === 'мл';
-    if (amtSet == null) amtSet = per100 ? 100 : 1;
-    if (per100 && !unit) unit = 'г';
-    if ($('fAmt')) $('fAmt').value = amtSet;
-    if ($('fAmtLbl')) $('fAmtLbl').textContent = per100 ? unit : p[2];
-    if ($('fKcal')) $('fKcal').value = per100 ? Math.round(p[1] * amtSet / 100) : Math.round(p[1] * amtSet);
-    if (sug) sug.innerHTML = amtNote + 'Нашла: <b>' + esc(p[0]) + '</b> — ' + p[1] + (per100 ? ' ккал/100 ' + unit : ' ккал за 1 ' + p[2]) + '. Калории подставила, поправьте при желании.';
-  } else {
-    if (sug) sug.textContent = 'В справочнике не нашлось — впишите калории сами, запомню как есть.';
+    const per100 = !p[2] || r.unit === 'г' || r.unit === 'мл';
+    const amt = r.amt != null ? r.amt : (per100 ? 100 : 1);
+    const u = per100 ? (r.unit || 'г') : p[2];
+    if ($('fAmt')) $('fAmt').value = amt;
+    if ($('fAmtLbl')) $('fAmtLbl').textContent = u;
+    if ($('fKcal')) $('fKcal').value = per100 ? Math.round(p[1] * amt / 100) : Math.round(p[1] * amt);
+    if (sug) sug.innerHTML = r.note + 'Нашла: <b>' + esc(p[0]) + '</b> — ' + p[1] + (per100 ? ' ккал/100 ' + u : ' ккал за 1 ' + p[2]) + '. Калории подставлю сама.';
+  } else if (sug) {
+    sug.textContent = 'В справочнике не нашлось — впишите калории сами, запомню как есть.';
   }
 }
 function foodCalc() {
@@ -657,20 +662,78 @@ function foodCalc() {
   const a = num($('fAmt') && $('fAmt').value) || 0;
   if ($('fKcal')) $('fKcal').value = Math.round(p[2] ? p[1] * a : p[1] * a / 100);
 }
+function uid() { return 'i' + Date.now() + Math.random().toString(36).slice(2, 6); }
+function pushFood(i, amt, unit, rate) {
+  if (!DB.food[foodDate]) DB.food[foodDate] = [];
+  const kcal = Math.round(rate * amt);
+  DB.food[foodDate].push({ id: uid(), base: PRODUCTS[i][0], amt: Math.round(amt), unit, rate, kcal });
+  return kcal;
+}
+function pushFoodPhrase(pt) {
+  const r = parseFood(pt);
+  if (r.i < 0) return null;
+  const p = PRODUCTS[r.i];
+  const per100 = !p[2] || r.unit === 'г' || r.unit === 'мл';
+  const amt = r.amt != null ? r.amt : (per100 ? 100 : 1);
+  return pushFood(r.i, amt, per100 ? (r.unit || 'г') : p[2], per100 ? p[1] / 100 : p[1]);
+}
+const foodPlural = n => n % 10 === 1 && n % 100 !== 11 ? 'блюдо' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'блюда' : 'блюд';
+function addFoodList(fromVoice) {
+  const el = $('fName');
+  const raw = el ? el.value.trim() : '';
+  if (!raw) return false;
+  const parts = raw.split(/[,;\n]+|(?:^|\s)и\s+/i).map(s => s.trim()).filter(Boolean);
+  if (parts.length === 1 && !fromVoice) return false; // одиночное блюдо — обычная кнопка «Добавить»
+  let added = 0, sum = 0;
+  const missed = [];
+  parts.forEach(pt => { const k = pushFoodPhrase(pt); if (k == null) missed.push(pt); else { added++; sum += k; } });
+  if (added) {
+    save(); renderFood();
+    toast('Добавила ' + added + ' ' + foodPlural(added) + ', ' + fmtInt(sum) + ' ккал — граммы поправьте в списке');
+  }
+  const fe = $('fName'), fs = $('fSug');
+  if (missed.length && fe) {
+    fe.value = missed.join(', ');
+    if (fs) fs.textContent = 'Это не поняла — поправьте и нажмите «Добавить» или впишите калории сами.';
+  } else if (added && fe) fe.value = '';
+  return true;
+}
 function addFood() {
   const name = $('fName').value.trim();
-  const kcal = num($('fKcal').value);
   if (!name) { toast('Напишите, что съели'); return; }
+  if (addFoodList(false)) return;
+  const kcal = num($('fKcal').value);
   if (isNaN(kcal) || kcal < 0 || kcal > 5000) { toast('Проверьте калории'); return; }
-  if (!DB.food[foodDate]) DB.food[foodDate] = [];
-  let shown = name;
   if (fMatchI >= 0) {
     const p = PRODUCTS[fMatchI];
-    const a = num($('fAmt') && $('fAmt').value);
-    shown = p[0] + (a ? ', ' + Math.round(a) + (p[2] ? ' ' + p[2] : ' г') : '');
+    const a = num($('fAmt') && $('fAmt').value) || (p[2] ? 1 : 100);
+    const per100 = !p[2] || $('fAmtLbl').textContent !== p[2];
+    pushFood(fMatchI, a, per100 ? ($('fAmtLbl').textContent || 'г') : p[2], per100 ? p[1] / 100 : p[1]);
+  } else {
+    if (!DB.food[foodDate]) DB.food[foodDate] = [];
+    DB.food[foodDate].push({ id: uid(), name, kcal: Math.round(kcal) });
   }
-  DB.food[foodDate].push({ id: 'i' + Date.now() + Math.random().toString(36).slice(2, 6), name: shown, kcal: Math.round(kcal) });
   save(); renderFood();
+}
+function editFoodAmt(id, v) {
+  const a = num(v);
+  const it = (DB.food[foodDate] || []).find(x => x.id === id);
+  if (!it || !it.base || !a || a <= 0) return;
+  it.amt = Math.round(a);
+  it.kcal = Math.round(it.rate * it.amt);
+  const k = $('kf_' + id); if (k) k.textContent = fmtInt(it.kcal);
+  updFoodTotals();
+  save();
+}
+function updFoodTotals() {
+  const eaten = (DB.food[foodDate] || []).reduce((s, x) => s + x.kcal, 0);
+  const e = $('foodEatenK'); if (e) e.textContent = fmtInt(eaten) + ' ккал';
+  const goal = DB.profile.goalKcal;
+  if (goal) {
+    const w = Math.min(100, Math.round(eaten / goal * 100));
+    const b = $('foodBar'); if (b) b.style.width = w + '%';
+    const h = $('foodBarHint'); if (h) h.textContent = w + '% от цели (' + fmtInt(goal) + ' ккал)';
+  }
 }
 function delFood(id) {
   DB.food[foodDate] = (DB.food[foodDate] || []).filter(x => x.id !== id);
@@ -709,9 +772,7 @@ function addProd(i) {
   const g = num($('g' + i).value);
   if (!g || g <= 0) { toast('Сколько добавляем?'); return; }
   const p = PRODUCTS[i];
-  const kcal = Math.round(p[2] ? p[1] * g : p[1] * g / 100);
-  if (!DB.food[foodDate]) DB.food[foodDate] = [];
-  DB.food[foodDate].push({ id: 'i' + Date.now() + Math.random().toString(36).slice(2, 6), name: p[0] + ', ' + Math.round(g) + (p[2] ? ' ' + p[2] : ' г'), kcal });
+  const kcal = pushFood(i, g, p[2] || 'г', p[2] ? p[1] : p[1] / 100);
   save(); toast('Добавлено: ' + kcal + ' ккал'); renderFood();
 }
 
@@ -731,11 +792,17 @@ RENDER.food = function () {
   const goal = DB.profile.goalKcal;
 
   const items = list.length
-    ? list.map(x => '<div class="item"><span class="nm">' + esc(x.name) + '</span><span class="kcal">' + fmtInt(x.kcal) + '</span><button class="del" onclick="delFood(\'' + x.id + '\')" aria-label="Удалить">×</button></div>').join('')
+    ? list.map(x => {
+        const left = x.base
+          ? '<span class="nm">' + esc(x.base) + '</span>' +
+            '<input class="g amt" type="number" inputmode="decimal" min="0" value="' + x.amt + '" oninput="editFoodAmt(\'' + x.id + '\', this.value)" aria-label="Сколько">'
+          : '<span class="nm">' + esc(x.name) + '</span>';
+        return '<div class="item">' + left + '<span class="unit-lbl">' + (x.unit || '') + '</span><span class="kcal" id="kf_' + x.id + '">' + fmtInt(x.kcal) + '</span><button class="del" onclick="delFood(\'' + x.id + '\')" aria-label="Удалить">×</button></div>';
+      }).join('')
     : '<div class="empty">Пока ничего не записано</div>';
 
   let totals =
-    '<div class="total"><span>Съедено — ' + foodDayLabel(foodDate) + '</span><b>' + fmtInt(eaten) + ' ккал</b></div>';
+    '<div class="total"><span>Съедено — ' + foodDayLabel(foodDate) + '</span><b id="foodEatenK">' + fmtInt(eaten) + ' ккал</b></div>';
   if (burn) {
     const bal = eaten - burn.total;
     totals += '<div class="hint" style="margin:0">Расход ~' + fmtInt(burn.total) + ' ккал · баланс ' + (bal > 0 ? '+' : '') + fmtInt(bal) + '</div>';
@@ -744,7 +811,7 @@ RENDER.food = function () {
   }
   if (goal) {
     const w = Math.min(100, Math.round(eaten / goal * 100));
-    totals += '<div class="progress"><i style="width:' + w + '%"></i></div><div class="hint" style="margin:2px 0 0">' + w + '% от цели (' + fmtInt(goal) + ' ккал)</div>';
+    totals += '<div class="progress"><i id="foodBar" style="width:' + w + '%"></i></div><div class="hint" id="foodBarHint" style="margin:2px 0 0">' + w + '% от цели (' + fmtInt(goal) + ' ккал)</div>';
   }
 
   el.innerHTML =
@@ -754,7 +821,7 @@ RENDER.food = function () {
     '<div class="card">' +
     '<h3>Добавить</h3>' +
     '<div class="row" style="align-items:stretch">' +
-    '<input id="fName" class="inp" placeholder="Блюдо или продукт" oninput="foodLookup()">' +
+    '<input id="fName" class="inp" placeholder="Блюдо или список через запятую" oninput="foodLookup()">' +
     '<button class="mic" id="micFood" onclick="startVoice(\'food\')" aria-label="Надиктовать блюдо">' + MIC + '</button>' +
     '</div>' +
     '<div class="hint" id="fSug" style="margin:6px 0 0"></div>' +
@@ -765,7 +832,7 @@ RENDER.food = function () {
     '<button class="btn" style="flex:0 0 auto" onclick="addFood()">Добавить</button>' +
     '</div>' +
     '<div style="margin-top:10px"><button class="btn pink" style="width:100%" onclick="openProducts()">Справочник: ' + PRODUCTS.length + ' продуктов</button></div>' +
-    '<div class="hint">Надиктуйте или впишите блюдо — калории подставлю сама. Количество пишите как удобно: 150 г, 200 мл, 0,5 л, 2 ч. л., 1 ст. л., 2 шт. Значения приблизительные.</div>' +
+    '<div class="hint">Надиктуйте список целиком: «творог, кофе с молоком, яблоко» — добавлю всё сразу, граммы поправите в списке. Количество можно сразу: 150 г, 200 мл, 2 ч. л., 1 шт. Калории считаю сама. Значения приблизительные.</div>' +
     '</div>';
 };
 
