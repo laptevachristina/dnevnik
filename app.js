@@ -287,10 +287,19 @@ function latestKg() {
   if (!DB.weight.length) return null;
   return DB.weight[DB.weight.length - 1].kg;
 }
+function calcAge() {
+  const b = DB.profile.birth;
+  if (!b) return DB.profile.age || 0;
+  const d = parseKey(b), now = new Date();
+  let a = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
+  return a;
+}
 function bmr() {
-  const p = DB.profile, kg = latestKg();
-  if (!p.height || !p.age || !kg) return null;
-  return Math.round(10 * kg + 6.25 * p.height - 5 * p.age - 161);
+  const p = DB.profile, kg = latestKg(), age = calcAge();
+  if (!p.height || !age || !kg) return null;
+  return Math.round(10 * kg + 6.25 * p.height - 5 * age - 161);
 }
 function stepsOf(k) { const s = DB.steps[k]; return (s && s.m || 0) + (s && s.s || 0); }
 function stepsKcal(k) {
@@ -1033,11 +1042,27 @@ RENDER.body = function () {
 function saveProfile() {
   const name = $('pName').value.trim();
   const height = parseInt($('pH').value, 10);
-  const age = parseInt($('pA').value, 10);
-  const goal = num($('pG').value);
+  const birth = $('pB').value || '';
+  const goal = $('pGoal').value;
+  const gkg = num($('pGKg').value);
   if (!isNaN(height) && (height < 120 || height > 230)) { toast('Проверьте рост'); return; }
-  if (!isNaN(age) && (age < 10 || age > 100)) { toast('Проверьте возраст'); return; }
-  DB.profile = { name, height: height || 0, age: age || 0, goalKcal: (!isNaN(goal) && goal >= 1000 && goal <= 5000) ? Math.round(goal) : 0 };
+  let age = 0;
+  if (birth) {
+    const d = parseKey(birth);
+    if (!d || d > new Date() || d.getFullYear() < 1920) { toast('Проверьте дату рождения'); return; }
+    const now = new Date();
+    age = now.getFullYear() - d.getFullYear();
+    const m = now.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+    if (age < 10 || age > 100) { toast('По этой дате выходит ' + age + ' — проверьте её'); return; }
+  }
+  if (!isNaN(gkg) && (gkg < 30 || gkg > 300)) { toast('Проверьте желаемый вес'); return; }
+  DB.profile = { name, height: height || 0, birth, age: age || (DB.profile.age || 0), goal, goalKg: gkg || 0, goalKcal: DB.profile.goalKcal || 0 };
+  const b = bmr();
+  if (b && goal) {
+    const base = goal === 'lose' ? Math.max(1200, Math.round(b * 0.85)) : goal === 'gain' ? Math.round(b * 1.1) : b;
+    DB.profile.goalKcal = base;
+  }
   save(); toast('Профиль сохранён'); renderProf();
 }
 function exportData() {
@@ -1092,11 +1117,18 @@ RENDER.prof = function () {
     '<label class="f">Имя</label><input id="pName" class="inp" value="' + esc(p.name || '') + '" placeholder="Кристина">' +
     '<div class="row">' +
     '<div><label class="f">Рост, см</label><input id="pH" class="inp" type="number" inputmode="numeric" value="' + (p.height || '') + '"></div>' +
-    '<div><label class="f">Возраст</label><input id="pA" class="inp" type="number" inputmode="numeric" value="' + (p.age || '') + '"></div>' +
+    '<div><label class="f">Дата рождения</label><input id="pB" class="inp" type="date" value="' + esc(p.birth || '') + '"></div>' +
     '</div>' +
-    '<label class="f">Цель по еде на день, ккал (по желанию)</label><input id="pG" class="inp" type="number" inputmode="numeric" value="' + (p.goalKcal || '') + '" placeholder="например, 1800">' +
+    '<label class="f">Цель</label><select id="pGoal" class="inp">' +
+    '<option value=""' + (!p.goal ? ' selected' : '') + '>— выбрать —</option>' +
+    '<option value="lose"' + (p.goal === 'lose' ? ' selected' : '') + '>Похудеть</option>' +
+    '<option value="keep"' + (p.goal === 'keep' ? ' selected' : '') + '>Поддерживать вес</option>' +
+    '<option value="gain"' + (p.goal === 'gain' ? ' selected' : '') + '>Набрать вес</option>' +
+    '</select>' +
+    '<label class="f">Желаемый вес, кг</label><input id="pGKg" class="inp" type="number" inputmode="decimal" value="' + (p.goalKg || '') + '" placeholder="куда стремлюсь">' +
     '<div style="margin-top:12px"><button class="btn" onclick="saveProfile()">Сохранить</button></div>' +
-    '<div class="hint">Рост, возраст и вес нужны, чтобы считать ваш базовый расход калорий.</div>' +
+    '<div class="hint">Возраст считаю по дате сам — в день рождения норма обновится без вас. Норма калорий: рост, дата рождения и текущий вес (вкладка «Тело») плюс выбранная цель.</div>' +
+    (p.goalKcal ? '<div class="hint" style="color:var(--sage-600)">Ваша норма сейчас: <b>~' + fmtInt(p.goalKcal) + ' ккал в день</b>' + (p.goalKg && latestKg() ? ' · до цели ' + fmt1(Math.abs(latestKg() - p.goalKg)) + ' кг' : '') + '</div>' : '') +
     '</div>' +
     (pendImport
       ? '<div class="card"><h2>Загрузка копии</h2><div class="hint" style="margin:0 0 10px">Заменить все записи дневника теми, что в файле? Текущие данные пропадут.</div>' +
