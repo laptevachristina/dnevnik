@@ -348,11 +348,11 @@ function cycleInfo() {
 
 /* биоритм дня: фаза цикла → цвет и подсказка */
 const PHASES = {
-  m:   { cls: 'ph-m',   lvl: 0, short: 'месячные', tip: 'энергии минимум, берегите себя — это норма, а не лень' },
-  pms: { cls: 'ph-pms', lvl: 1, short: 'спад',     tip: 'усталость перед месячными — физиология, не вините себя' },
-  fol: { cls: 'ph-fol', lvl: 2, short: 'энергия',  tip: 'силы растут — хорошее время для тренировок и больших дел' },
-  lut: { cls: 'ph-lut', lvl: 2, short: 'спокойно', tip: 'дела идут ровно, без рекордов' },
-  ov:  { cls: 'ph-ov',  lvl: 3, short: 'пик',      tip: 'самое продуктивное время цикла' }
+  m:   { cls: 'ph-m',   lvl: 0, short: 'месячные', tip: 'энергии минимум, берегите себя — это норма, а не лень', col: '#C96F7E' },
+  pms: { cls: 'ph-pms', lvl: 1, short: 'спад',     tip: 'усталость перед месячными — физиология, не вините себя', col: '#D9A93F' },
+  fol: { cls: 'ph-fol', lvl: 2, short: 'энергия',  tip: 'силы растут — хорошее время для тренировок и больших дел', col: '#75906F' },
+  lut: { cls: 'ph-lut', lvl: 2, short: 'спокойно', tip: 'дела идут ровно, без рекордов', col: '#AEC2A8' },
+  ov:  { cls: 'ph-ov',  lvl: 3, short: 'пик',      tip: 'самое продуктивное время цикла', col: '#4E7A45' }
 };
 function phaseOf(k, ci) {
   if (DB.period[k] || (ci && ci.pred.has(k))) return PHASES.m;
@@ -985,10 +985,14 @@ function setActDate(v) { actDate = v || todayKey(); renderAct(); }
 
 let BAR_DAYS = [];
 function barChart7(k) {
+  const ci = cycleInfo();
   const base = parseKey(k).getTime();
   const days = [];
   for (let i = 6; i >= 0; i--) days.push(dkey(new Date(base - i * DAY)));
-  BAR_DAYS = days.map(k => ({ k, v: stepsOf(k) }));
+  BAR_DAYS = days.map(kk => {
+    const wd = parseKey(kk).getDay();
+    return { k: kk, v: stepsOf(kk), ph: phaseOf(kk, ci), we: wd === 0 || wd === 6 };
+  });
   const mx = Math.max(1, ...BAR_DAYS.map(d => d.v));
   const W = 320, H = 128, pad = 12, bw = (W - pad * 2) / 7 - 6, bh = 74;
   const tk = todayKey();
@@ -998,8 +1002,9 @@ function barChart7(k) {
     const h = Math.max(d.v > 0 ? 4 : 0, Math.round(d.v / mx * bh));
     const y = 88 - h;
     const isT = d.k === tk;
-    s += '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + h + '" rx="4" fill="' + (isT ? '#DFA3B6' : '#75906F') + '" opacity="' + (d.v > 0 ? 1 : .18) + '"/>';
-    s += '<text x="' + (x + bw / 2) + '" y="' + (104) + '" text-anchor="middle" font-size="10.5" fill="#8B8794">' + d.k.slice(8) + '</text>';
+    const fill = d.ph ? d.ph.col : '#B9C4B3';
+    s += '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + h + '" rx="4" fill="' + fill + '" opacity="' + (d.v > 0 ? (d.we ? 0.55 : 1) : 0.18) + '"' + (isT ? ' stroke="#3A3740" stroke-width="1.5"' : '') + '/>';
+    s += '<text x="' + (x + bw / 2) + '" y="' + (104) + '" text-anchor="middle" font-size="10.5" fill="' + (d.we ? '#B0ABB8' : '#8B8794') + '">' + d.k.slice(8) + '</text>';
     if (isT && d.v > 0) s += '<text x="' + (x + bw / 2) + '" y="' + (y - 5) + '" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3A3740">' + (d.v / 1000 >= 1 ? fmt1(d.v / 1000).replace(',0', '') + 'к' : d.v) + '</text>';
     s += '<rect x="' + (x - 3) + '" y="4" width="' + (bw + 6) + '" height="112" fill="transparent" onclick="barTap(' + i + ')"/>';
   });
@@ -1009,7 +1014,7 @@ function barChart7(k) {
 function barTap(i) {
   const d = BAR_DAYS[i];
   const c = $('stepsCap');
-  if (c) c.textContent = d.k.slice(8) + '.' + d.k.slice(5, 7) + ': ' + fmtInt(d.v) + ' шагов';
+  if (c && d) c.textContent = d.k.slice(8) + '.' + d.k.slice(5, 7) + ': ' + fmtInt(d.v) + ' шагов' + (d.we ? ' · выходной' : '') + (d.ph ? ' · ' + d.ph.short : '');
 }
 
 RENDER.act = function () {
@@ -1037,6 +1042,7 @@ RENDER.act = function () {
     '<div class="card">' +
     '<h2>Неделя шагов</h2>' + barChart7(k) +
     '<div class="chart-cap" id="stepsCap">нажмите на столбик — покажу число</div>' +
+    (cycleInfo() ? '<div class="hint" style="margin:6px 0 0">Цвет столбика — биоритм цикла. Суббота и воскресенье бледнее: шагов там меньше само по себе, без всякого цикла.</div>' : '') +
     '</div>' +
     '<div class="card">' +
     '<h2>Тренировка</h2>' +
