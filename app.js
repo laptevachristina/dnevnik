@@ -346,6 +346,28 @@ function cycleInfo() {
   return { count: cl.length, avgLen, avgDur, lastStart, nextStart, cycleDay, pred };
 }
 
+/* биоритм дня: фаза цикла → цвет и подсказка */
+const PHASES = {
+  m:   { cls: 'ph-m',   lvl: 0, short: 'месячные', tip: 'энергии минимум, берегите себя — это норма, а не лень' },
+  pms: { cls: 'ph-pms', lvl: 1, short: 'спад',     tip: 'усталость перед месячными — физиология, не вините себя' },
+  fol: { cls: 'ph-fol', lvl: 2, short: 'энергия',  tip: 'силы растут — хорошее время для тренировок и больших дел' },
+  lut: { cls: 'ph-lut', lvl: 2, short: 'спокойно', tip: 'дела идут ровно, без рекордов' },
+  ov:  { cls: 'ph-ov',  lvl: 3, short: 'пик',      tip: 'самое продуктивное время цикла' }
+};
+function phaseOf(k, ci) {
+  if (DB.period[k] || (ci && ci.pred.has(k))) return PHASES.m;
+  if (!ci || !ci.avgLen || ci.avgLen < 20 || ci.avgLen > 45) return null;
+  const t = parseKey(k).getTime();
+  const base = parseKey(ci.lastStart).getTime();
+  const L = ci.avgLen * DAY;
+  const startT = base + Math.floor((t - base) / L) * L; // старт цикла, в котором живёт дата
+  const dnum = Math.round((t - startT) / DAY);
+  const ovul = ci.avgLen - 14;
+  if (dnum >= ci.avgLen - 3) return PHASES.pms;
+  if (Math.abs(dnum - ovul) <= 2) return PHASES.ov;
+  return dnum < ovul - 2 ? PHASES.fol : PHASES.lut;
+}
+
 /* ---------- вкладки ---------- */
 
 const MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>';
@@ -477,9 +499,14 @@ RENDER.cal = function () {
     if (k === tk) cls.push('today');
     if (k === selDate) cls.push('sel');
     const nd = DB.notes[k] ? '<span class="nd"></span>' : '';
-    grid += '<div class="' + cls.join(' ') + '" onclick="selectDay(\'' + k + '\')">' + d + nd + '</div>';
+    const ph = phaseOf(k, ci);
+    const pd = ph ? '<i class="pd ' + ph.cls + '"></i>' : '';
+    grid += '<div class="' + cls.join(' ') + '" onclick="selectDay(\'' + k + '\')">' + d + nd + pd + '</div>';
   }
   grid += '</div>';
+  const legend = ci ? '<div class="cal-legend">' +
+    ['ov', 'fol', 'lut', 'pms', 'm'].map(x => '<span><i class="dot ' + PHASES[x].cls + '"></i>' + PHASES[x].short + '</span>').join('') +
+    '</div>' : '';
 
   const food = DB.food[selDate] || [];
   const foodSum = food.reduce((s, x) => s + x.kcal, 0);
@@ -511,17 +538,21 @@ RENDER.cal = function () {
     cyc = '<div class="card"><h2>Цикл</h2>' + lines.map(l => '<div class="hint" style="margin:4px 0">' + l + '</div>').join('') + '</div>';
   }
 
+  const phSel = phaseOf(selDate, ci);
+  const bio = phSel ? '<div class="hint" style="margin:10px 0 0">Биоритм дня: <i class="dot ' + phSel.cls + '"></i><b>' + phSel.short + '</b> — ' + phSel.tip + '.</div>' : '';
+
   el.innerHTML =
     '<div class="card">' +
     '<div class="cal-nav">' +
     '<button class="cal-arrow" onclick="calShift(-1)" aria-label="Предыдущий месяц">‹</button>' +
     '<b>' + MONTHS_NOM[calM] + ' ' + calY + '</b>' +
     '<button class="cal-arrow" onclick="calShift(1)" aria-label="Следующий месяц">›</button>' +
-    '</div>' + grid + '</div>' +
+    '</div>' + grid + legend + '</div>' +
     '<div class="card">' +
     '<h2>' + dayTitle(selDate) + '</h2>' +
     '<button class="btn ' + (DB.period[selDate] ? 'pink' : '') + '" style="width:100%" onclick="togglePeriod(\'' + selDate + '\')">' +
     (DB.period[selDate] ? 'Месячные отмечены — убрать отметку' : 'Отметить месячные') + '</button>' +
+    bio +
     dayStats +
     '<div style="display:flex;justify-content:space-between;align-items:center">' +
     '<label class="f" style="margin:12px 0 5px">Заметка на этот день</label>' +
