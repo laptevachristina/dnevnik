@@ -912,22 +912,23 @@ function persistSensor() {
   save();
 }
 function updateStepsLive() {
-  const k = todayKey();
+  const k = actDate || todayKey();
+  if (k !== todayKey()) return;
   const s = $('stepsLive');
   if (s) s.textContent = fmtInt(stepsOf(k));
 }
 function addStepsManual() {
   const v = parseInt($('stepsAdd').value, 10);
   if (isNaN(v) || v <= 0) { toast('Сколько шагов добавить?'); return; }
-  const k = todayKey();
+  const k = actDate || todayKey();
   if (!DB.steps[k]) DB.steps[k] = { m: 0, s: 0 };
   DB.steps[k].m += v;
   save(); renderAct();
 }
 function resetSteps() {
-  const k = todayKey();
+  const k = actDate || todayKey();
   DB.steps[k] = { m: 0, s: 0 };
-  sen.count = 0;
+  if (k === todayKey()) sen.count = 0;
   save(); renderAct();
 }
 function addWorkout() {
@@ -936,22 +937,26 @@ function addWorkout() {
   if (isNaN(min) || min <= 0 || min > 600) { toast('Сколько минут?'); return; }
   const kg = latestKg() || 60;
   const kcal = Math.round(w[1] * kg * min / 60);
-  const k = todayKey();
+  const k = actDate || todayKey();
   if (!DB.workouts[k]) DB.workouts[k] = [];
   DB.workouts[k].push({ id: 'w' + Date.now(), name: w[0], min, kcal });
   save(); renderAct();
 }
 function delWorkout(id) {
-  const k = todayKey();
+  const k = actDate || todayKey();
   DB.workouts[k] = (DB.workouts[k] || []).filter(x => x.id !== id);
   if (DB.workouts[k] && !DB.workouts[k].length) delete DB.workouts[k];
   save(); renderAct();
 }
 
+let actDate = '';
+function setActDate(v) { actDate = v || todayKey(); renderAct(); }
+
 let BAR_DAYS = [];
-function barChart7() {
+function barChart7(k) {
+  const base = parseKey(k).getTime();
   const days = [];
-  for (let i = 6; i >= 0; i--) days.push(dkey(new Date(Date.now() - i * DAY)));
+  for (let i = 6; i >= 0; i--) days.push(dkey(new Date(base - i * DAY)));
   BAR_DAYS = days.map(k => ({ k, v: stepsOf(k) }));
   const mx = Math.max(1, ...BAR_DAYS.map(d => d.v));
   const W = 320, H = 128, pad = 12, bw = (W - pad * 2) / 7 - 6, bh = 74;
@@ -978,14 +983,15 @@ function barTap(i) {
 
 RENDER.act = function () {
   const el = $('tab-act');
-  const k = todayKey();
+  const k = actDate || todayKey();
   const st = DB.steps[k] || { m: 0, s: 0 };
   const burn = dayBurn(k);
   const wl = workoutsOf(k);
 
   el.innerHTML =
     '<div class="card">' +
-    '<h2>Шаги сегодня</h2>' +
+    '<input class="inp" type="date" value="' + k + '" max="' + todayKey() + '" onchange="setActDate(this.value)">' +
+    '<h2>Шаги — ' + foodDayLabel(k) + '</h2>' +
     '<div class="big" id="stepsLive">' + fmtInt(st.m + st.s) + '</div>' +
     '<div class="hint" style="margin:2px 0 10px">ручные ' + fmtInt(st.m) + ' + шагомер ' + fmtInt(st.s) + '</div>' +
     '<div class="row">' +
@@ -995,10 +1001,10 @@ RENDER.act = function () {
     '<input id="stepsAdd" class="inp" type="number" inputmode="numeric" placeholder="Например, 2500">' +
     '<button class="btn pink" onclick="addStepsManual()">+ шаги</button>' +
     '</div>' +
-    '<div class="hint">Пока шагомер включён, экран не гаснет — телефон в кармане продолжает считать. Закрыли приложение или погасили экран сами — счёт встал: точное число за день смотрите в «Здоровье» и добавляйте кнопкой «+ шаги».</div>' +
+    '<div class="hint">Шаги за другой день: выберите дату сверху и впишите число из «Здоровье» — оно попадёт в график. Пока шагомер включён, экран не гаснет — телефон в кармане продолжает считать.</div>' +
     '</div>' +
     '<div class="card">' +
-    '<h2>Неделя шагов</h2>' + barChart7() +
+    '<h2>Неделя шагов</h2>' + barChart7(k) +
     '<div class="chart-cap" id="stepsCap">нажмите на столбик — покажу число</div>' +
     '</div>' +
     '<div class="card">' +
@@ -1019,7 +1025,7 @@ RENDER.act = function () {
         '<div class="total"><span><b>Итого</b></span><b>~' + fmtInt(burn.total) + ' ккал</b></div>' +
         '<div class="hint">Базовый обмен — формула Миффлина — Сан Жеора по росту, возрасту и весу. Всё приблизительно.</div>'
       : '<div class="empty">Заполните рост и возраст в «Профиле» и запишите вес в «Теле» — тогда посчитаю расход.</div>') +
-    '<div style="margin-top:8px"><button class="btn ghost small" onclick="resetSteps()">Обнулить шаги за сегодня</button></div>' +
+    '<div style="margin-top:8px"><button class="btn ghost small" onclick="resetSteps()">Обнулить шаги за ' + foodDayLabel(k) + '</button></div>' +
     '</div>';
 };
 
