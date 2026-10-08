@@ -1107,6 +1107,7 @@ function lineChart(kind, pts, unit) {
   if (pts.length < 2) {
     return '<div class="chart-cap" id="' + kind + 'Cap">' + cap + '</div>';
   }
+  const ci = cycleInfo();
   const W = 320, H = 140, L = 38, R = 16, T = 16, B = 24;
   const vs = pts.map(p => p.v);
   let mn = Math.min(...vs), mx = Math.max(...vs);
@@ -1119,6 +1120,11 @@ function lineChart(kind, pts, unit) {
   const maxLen = Math.min(pts.length, 20);
   const shown = pts.slice(-maxLen);
   let s = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">';
+  for (let i = 0; i < pts.length - 1; i++) { // фон — фаза цикла каждой записи
+    const ph = phaseOf(pts[i].d, ci);
+    if (!ph) continue;
+    s += '<rect x="' + X(i).toFixed(1) + '" y="' + T + '" width="' + (X(i + 1) - X(i)).toFixed(1) + '" height="' + (H - T - B) + '" fill="' + ph.col + '" opacity="' + (ph.lvl === 0 ? 0.22 : ph.lvl === 1 ? 0.18 : 0.1) + '"/>';
+  }
   [mn + (mx - mn) * 0.05, (mn + mx) / 2, mx - (mx - mn) * 0.05].forEach(v => {
     s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '" stroke="#EFE7EA" stroke-width="1"/>';
     s += '<text x="' + (L - 5) + '" y="' + (Y(v) + 3.5).toFixed(1) + '" text-anchor="end" font-size="10.5" fill="#8B8794">' + fmt1(v) + '</text>';
@@ -1134,7 +1140,23 @@ function lineChart(kind, pts, unit) {
   s += '<text x="' + (W - R) + '" y="' + (H - 6) + '" text-anchor="end" font-size="10.5" fill="#8B8794">' + dShort(last.d) + '</text>';
   s += '<text x="' + (X(pts.length - 1) - 2).toFixed(1) + '" y="' + Math.max(11, Y(last.v) - 9).toFixed(1) + '" text-anchor="end" font-size="11" font-weight="700" fill="#3A3740">' + fmt1(last.v) + unit + '</text>';
   s += '</svg>';
-  return '<div class="chart-cap" id="' + kind + 'Cap">' + cap + '</div>' + s;
+  const lg = ci ? '<div class="cal-legend">' + ['ov', 'fol', 'lut', 'pms', 'm'].map(x => '<span><i class="dot ' + PHASES[x].cls + '"></i>' + PHASES[x].short + '</span>').join('') + '</div>' : '';
+  return '<div class="chart-cap" id="' + kind + 'Cap">' + cap + '</div>' + s + lg;
+}
+function phaseStats(pts, unit) {
+  const ci = cycleInfo();
+  if (!ci || !ci.avgLen) return '';
+  const gr = [], low = [];
+  pts.forEach(p => {
+    const ph = phaseOf(p.d, ci);
+    if (!ph) return;
+    (ph.lvl <= 1 ? low : gr).push(p.v);
+  });
+  if (gr.length < 2 || !low.length) return '';
+  const d = low.reduce((a, b) => a + b, 0) / low.length - gr.reduce((a, b) => a + b, 0) / gr.length;
+  const what = unit === ' кг' ? 'вес' : 'обмер';
+  if (d <= 0) return '<div class="hint" style="margin:6px 0 0">Фон — фаза цикла. В жёлтые и красные дни ' + what + ' не выше, чем в зелёные: отёков график не показывает.</div>';
+  return '<div class="hint" style="margin:6px 0 0">Фон — фаза цикла. В жёлтые и красные дни ' + what + ' в среднем +' + fmt1(d) + unit + ' к зелёным — это в основном вода, после месячных уходит сама, не спешите себя винить.</div>';
 }
 function chartTap(kind, i) {
   const p = CHARTS[kind][i];
@@ -1174,7 +1196,7 @@ RENDER.body = function () {
     '<input id="wKg" class="inp" type="number" inputmode="decimal" placeholder="вес, кг" value="' + (last ? last.kg : '') + '">' +
     '<button class="btn" onclick="saveWeight()">Записать</button>' +
     '</div>' +
-    (w.length >= 2 ? '<div style="margin-top:12px">' + lineChart('w', w.map(x => ({ d: x.d, v: x.kg })), ' кг') + '</div>' : '<div class="hint">нажимайте на точки графика — покажу дату и число</div>') +
+    (w.length >= 2 ? '<div style="margin-top:12px">' + lineChart('w', w.map(x => ({ d: x.d, v: x.kg })), ' кг') + phaseStats(w.map(x => ({ d: x.d, v: x.kg })), ' кг') + '</div>' : '<div class="hint">нажимайте на точки графика — покажу дату и число</div>') +
     '</div>' +
     '<div class="card"><h2>Обмеры, см</h2>' +
     MEAS.map(m => '<label class="f">' + m[1] + '</label><input id="m_' + m[0] + '" class="inp" type="number" inputmode="decimal" placeholder="—" value="' + (lm && lm[m[0]] != null ? lm[m[0]] : '') + '">').join('') +
@@ -1183,7 +1205,8 @@ RENDER.body = function () {
       ? '<div style="margin-top:14px"><select class="inp" onchange="setMeasure(this.value)">' +
         MEAS.map(m => '<option value="' + m[0] + '"' + (m[0] === curMeasure ? ' selected' : '') + '>' + m[1] + ', динамика</option>').join('') +
         '</select>' +
-        lineChart('m', DB.measures.filter(x => x[curMeasure] != null).map(x => ({ d: x.d, v: x[curMeasure] })), ' см') + '</div>'
+        lineChart('m', DB.measures.filter(x => x[curMeasure] != null).map(x => ({ d: x.d, v: x[curMeasure] })), ' см') +
+        phaseStats(DB.measures.filter(x => x[curMeasure] != null).map(x => ({ d: x.d, v: x[curMeasure] })), ' см') + '</div>'
       : '<div class="hint">Два дня обмеров — и появится график динамики</div>') +
     '</div>' + bmi;
 };
