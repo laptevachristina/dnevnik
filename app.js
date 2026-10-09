@@ -4,16 +4,17 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
-const APP_VER = 20;
+const APP_VER = 21;
 
 function blank() {
-  return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [] };
+  return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [], sleep: {} };
 }
 function load() {
   try { const d = JSON.parse(localStorage.getItem(SKEY)); if (d && typeof d === 'object') return d; } catch (e) {}
   return blank();
 }
 let DB = load();
+DB.sleep = DB.sleep || {};
 let pendImport = null;
 let saveWarned = false;
 function save() {
@@ -542,13 +543,13 @@ RENDER.cal = function () {
   const food = DB.food[selDate] || [];
   const foodSum = food.reduce((s, x) => s + x.kcal, 0);
   const st = stepsOf(selDate);
-  let dayStats = '';
-  if (foodSum || st) {
-    dayStats = '<div class="hint">' +
-      (foodSum ? 'Еда: ' + fmtInt(foodSum) + ' ккал' : '') +
-      (foodSum && st ? ' · ' : '') +
-      (st ? 'Шаги: ' + fmtInt(st) : '') + '</div>';
-  }
+  const sl = (DB.sleep || {})[selDate];
+  const slH = sl ? sleepDurH(sl.b, sl.w) : null;
+  const bits = [];
+  if (foodSum) bits.push('Еда: ' + fmtInt(foodSum) + ' ккал');
+  if (st) bits.push('Шаги: ' + fmtInt(st));
+  if (slH != null) bits.push('Сон: ' + fmtDurH(slH) + (slH < 6.5 ? ' — возможно, спад энергии' : ''));
+  const dayStats = bits.length ? '<div class="hint">' + bits.join(' · ') + '</div>' : '';
 
   let cyc = '';
   if (ci) {
@@ -1059,6 +1060,93 @@ function barTap(i) {
   if (c && d) c.textContent = d.k.slice(8) + '.' + d.k.slice(5, 7) + ': ' + fmtInt(d.v) + ' шагов' + (d.we ? ' · выходной' : '') + (d.ph ? ' · ' + d.ph.short : '');
 }
 
+/* ---------- сон ---------- */
+
+function sleepDurH(b, w) {
+  if (!b || !w) return null;
+  const pr = s => { const a = s.split(':').map(Number); return a[0] * 60 + (a[1] || 0); };
+  let d = pr(w) - pr(b);
+  if (d <= 0) d += 1440;
+  return Math.round(d) / 60;
+}
+function fmtDurH(h) {
+  if (h == null) return '';
+  const m = Math.round(h * 60);
+  return (Math.floor(m / 60) + ' ч ' + (m % 60 ? m % 60 + ' м' : '')).trim();
+}
+function sleepAdvice(h, q, b) {
+  const tips = [];
+  if (h < 6) tips.push('Мало сна: недосып тормозит обмен веществ и тянет к сладкому. Планируйте день спокойнее — это физиология, а не слабость. Вечером лягте на час раньше обычного.');
+  else if (h < 7) tips.push('Чуть меньше нормы. День пройдёт нормально, но к вечеру накроет — не боритесь, ложитесь вовремя.');
+  else if (h > 9.5) tips.push('Спали долго. Если чувствуете разбитость — это не лишний отдых, а сбитый ритм. Лучшее лекарство — вставать в одно и то же время.');
+  else tips.push('По длительности — норма: 7–9 часов, обмен веществ скажет спасибо.');
+  if (q === 0) tips.push('Рваный сон чинится привычками: кофеин — до 14:00, экран — за час до постели, в спальне прохладно и темно.');
+  else if (q === 2 && h >= 7) tips.push('Выспались хорошо — сегодня силы на тренировку и большие дела.');
+  if (b && h < 7 && parseInt(b, 10) < 5) tips.push('Легли за полночь. Сон любит расписание: постоянное время укладывания важнее всего, даже в выходные ±час.');
+  return tips;
+}
+function saveSleep() {
+  const k = actDate || todayKey();
+  const b = $('sBed').value, w = $('sWake').value;
+  if (!b || !w) { toast('Во сколько легли и во сколько проснулись?'); return; }
+  DB.sleep[k] = { b, w, q: parseInt($('sQ').value, 10) || 0 };
+  save(); renderAct();
+  toast('Сон записан: ' + fmtDurH(sleepDurH(b, w)));
+}
+function delSleep() {
+  const k = actDate || todayKey();
+  delete DB.sleep[k];
+  save(); renderAct();
+}
+function sleepWeek(k) {
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const kk = dkey(new Date(parseKey(k).getTime() - i * DAY));
+    const s = (DB.sleep || {})[kk];
+    days.push({ kk, h: s ? sleepDurH(s.b, s.w) : null });
+  }
+  if (!days.some(d => d.h != null)) return '';
+  const W = 320, H = 112, pad = 4, bw = (W - pad * 8) / 7;
+  let bars = '', lbls = '';
+  days.forEach((d, i) => {
+    const x = pad + i * (bw + pad);
+    if (d.h != null) {
+      const hpx = Math.min(d.h / 10, 1) * (H - 28);
+      const col = d.h >= 7 ? '#75906F' : d.h >= 6 ? '#D9A93F' : '#C97B8B';
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + (H - 18 - hpx).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + hpx.toFixed(1) + '" rx="3" fill="' + col + '" opacity="' + (i === 6 ? 1 : .8) + '"><title>' + d.kk + ': ' + fmtDurH(d.h) + '</title></rect>';
+    }
+    lbls += '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 5) + '" font-size="10" text-anchor="middle" fill="#8B8794">' + parseInt(d.kk.slice(8), 10) + '</text>';
+  });
+  const y7 = H - 18 - 0.7 * (H - 28);
+  return '<div style="margin-top:14px"><svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">' +
+    '<line x1="' + pad + '" y1="' + y7.toFixed(1) + '" x2="' + (W - pad) + '" y2="' + y7.toFixed(1) + '" stroke="#B9C8B5" stroke-dasharray="4 3" stroke-width="1.5"/>' +
+    bars + lbls + '</svg>' +
+    '<div class="chart-cap">7 ночей · пунктир — норма 7 ч · зелёный ≥7 ч, жёлтый 6–7, красный — меньше 6</div></div>';
+}
+function sleepCard(k) {
+  const s = (DB.sleep || {})[k];
+  const h = s ? sleepDurH(s.b, s.w) : null;
+  const tips = s && h != null ? sleepAdvice(h, s.q, s.b) : [];
+  return '<div class="card"><h2>Сон — утро ' + foodDayLabel(k) + '</h2>' +
+    '<div class="row">' +
+    '<div><label class="f">Легли спать</label><input id="sBed" class="inp" type="time" value="' + (s ? s.b : '') + '"></div>' +
+    '<div><label class="f">Проснулись</label><input id="sWake" class="inp" type="time" value="' + (s ? s.w : '') + '"></div>' +
+    '</div>' +
+    '<label class="f">Качество сна</label><select id="sQ" class="inp">' +
+    '<option value="0"' + (s && s.q === 0 ? ' selected' : '') + '>Плохой, рваный</option>' +
+    '<option value="1"' + (!s || s.q === 1 ? ' selected' : '') + '>Нормальный</option>' +
+    '<option value="2"' + (s && s.q === 2 ? ' selected' : '') + '>Отличный</option>' +
+    '</select>' +
+    '<div style="margin-top:10px"><button class="btn" onclick="saveSleep()">Записать сон</button>' +
+    (s ? ' <button class="btn ghost small" onclick="delSleep()">Удалить</button>' : '') + '</div>' +
+    (s && h != null
+      ? '<div class="big" style="margin-top:12px">' + fmtDurH(h) + '</div>' +
+        tips.map(t => '<div class="hint" style="margin:6px 0 0">· ' + t + '</div>').join('')
+      : '<div class="hint">Сон записывайте на утро того дня, когда проснулись. Часы посчитаю сама — и подскажу, как спать лучше.</div>') +
+    sleepWeek(k) +
+    '</div>';
+}
+
 RENDER.act = function () {
   const el = $('tab-act');
   const k = actDate || todayKey();
@@ -1082,6 +1170,7 @@ RENDER.act = function () {
     '<div style="margin-top:8px"><button class="btn ghost small" onclick="setStepsTotal()">Исправить — в поле верное общее число</button></div>' +
     '<div class="hint">Шаги за другой день: выберите дату сверху и впишите число из «Здоровье» — оно попадёт в график. Ошиблись в цифре — впишите верное общее число и нажмите «Исправить». Пока шагомер включён, экран не гаснет — телефон в кармане продолжает считать.</div>' +
     '</div>' +
+    sleepCard(k) +
     '<div class="card">' +
     '<h2>Неделя шагов</h2>' + barChart7(k) +
     '<div class="chart-cap" id="stepsCap">нажмите на столбик — покажу число</div>' +
