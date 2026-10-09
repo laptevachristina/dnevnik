@@ -79,14 +79,17 @@ label.f { display: block; font-size: 12.5px; color: var(--muted); margin: 10px 0
   border-radius: 13px; font-size: 15px; color: var(--ink); border: 1.6px solid transparent;
   cursor: pointer; user-select: none; background: transparent;
 }
+.cal-day.bg-ov { background: #9CC68F; font-weight: 600; }
+.cal-day.bg-fol { background: #C8D9C1; }
+.cal-day.bg-lut { background: #E8EEE4; }
+.cal-day.bg-pms { background: #F4E3BC; }
+.cal-day.bg-m { background: #F3CCD6; }
 .cal-day.period { background: var(--pink-300); font-weight: 600; }
 .cal-day.pred { border: 1.6px dashed var(--sage-500); color: var(--sage-600); }
 .cal-day.today { border-color: var(--sage-500); }
 .cal-day.sel { background: var(--ink); color: #fff; font-weight: 700; }
 .cal-day .nd { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--sage-500); }
 .cal-day.sel .nd { background: #fff; }
-.cal-day .pd { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 7px; height: 7px; border-radius: 50%; }
-.cal-day.sel .pd { box-shadow: 0 0 0 1.5px #fff; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
 .ph-ov { background: #4E7A45; }
 .ph-fol { background: #75906F; }

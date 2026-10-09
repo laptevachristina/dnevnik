@@ -4,7 +4,7 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
-const APP_VER = 18;
+const APP_VER = 19;
 
 function blank() {
   return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [] };
@@ -531,8 +531,8 @@ RENDER.cal = function () {
     if (k === selDate) cls.push('sel');
     const nd = DB.notes[k] ? '<span class="nd"></span>' : '';
     const ph = phaseOf(k, ci);
-    const pd = ph ? '<i class="pd ' + ph.cls + '"></i>' : '';
-    grid += '<div class="' + cls.join(' ') + '" onclick="selectDay(\'' + k + '\')">' + d + nd + pd + '</div>';
+    if (ph && !DB.period[k]) cls.push(ph.cls.replace('ph-', 'bg-'));
+    grid += '<div class="' + cls.join(' ') + '" onclick="selectDay(\'' + k + '\')">' + d + nd + '</div>';
   }
   grid += '</div>';
   const legend = ci ? '<div class="cal-legend">' +
@@ -1196,6 +1196,28 @@ function chartTap(kind, i) {
   if (c) c.textContent = dShort(p.d) + ': ' + fmt1(p.v) + (kind === 'w' ? ' кг' : ' см');
 }
 
+function bodyOverall() {
+  const parts = [];
+  const w = DB.weight;
+  if (w.length >= 2) {
+    const d = w[w.length - 1].kg - w[0].kg;
+    parts.push('вес ' + (d > 0 ? '+' : '') + fmt1(d) + ' кг');
+  }
+  let tot = 0; const br = [];
+  MEAS.forEach(m => {
+    const arr = DB.measures.filter(x => x[m[0]] != null);
+    if (arr.length >= 2) {
+      const d = arr[arr.length - 1][m[0]] - arr[0][m[0]];
+      tot += d;
+      br.push(m[1] + ' ' + (d > 0 ? '+' : '') + fmt1(d));
+    }
+  });
+  if (br.length) parts.push('обмеры ' + (tot > 0 ? '+' : '') + fmt1(tot) + ' см в сумме');
+  if (!parts.length) return '';
+  return '<div class="hint" style="color:var(--sage-600);margin:10px 0 0">Общая динамика: ' + parts.join(' · ') +
+    (br.length > 1 ? ' (' + br.join(', ') + ')' : '') + '</div>';
+}
+
 RENDER.body = function () {
   const el = $('tab-body');
   const w = DB.weight;
@@ -1232,6 +1254,7 @@ RENDER.body = function () {
     '<div class="card"><h2>Обмеры, см</h2>' +
     MEAS.map(m => '<label class="f">' + m[1] + '</label><input id="m_' + m[0] + '" class="inp" type="number" inputmode="decimal" placeholder="—" value="' + (lm && lm[m[0]] != null ? lm[m[0]] : '') + '">').join('') +
     '<div style="margin-top:12px"><button class="btn" onclick="saveMeasures()">Записать обмеры</button></div>' +
+    bodyOverall() +
     (DB.measures.length >= 2
       ? '<div style="margin-top:14px"><select class="inp" onchange="setMeasure(this.value)">' +
         MEAS.map(m => '<option value="' + m[0] + '"' + (m[0] === curMeasure ? ' selected' : '') + '>' + m[1] + ', динамика</option>').join('') +
