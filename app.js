@@ -368,6 +368,36 @@ function phaseOf(k, ci) {
   return dnum < ovul - 2 ? PHASES.fol : PHASES.lut;
 }
 
+/* сезонный световой день: средняя полоса России, ~55,7° с.ш. */
+const LAT = 55.7 * Math.PI / 180;
+function dayLenH(d) {
+  const rad = Math.PI / 180;
+  const n = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / DAY);
+  const dec = 23.44 * rad * Math.sin(2 * Math.PI * (n + 284) / 365); // склонение солнца
+  const cosH = (Math.cos(90.833 * rad) - Math.sin(LAT) * Math.sin(dec)) / (Math.cos(LAT) * Math.cos(dec));
+  return 24 * Math.acos(Math.max(-1, Math.min(1, cosH))) / Math.PI;
+}
+function seasonCard() {
+  const now = new Date();
+  const h = dayLenH(now);
+  const diff = Math.round((dayLenH(new Date(now.getTime() + DAY)) - h) * 60);
+  const hm = Math.round(h * 60), hh = Math.floor(hm / 60), mm = hm % 60;
+  let tip;
+  if (h < 8.7) tip = 'самые тёмные недели: телу нужно больше сна — это норма, а не лень. Утренний свет и прогулка возвращают бодрость';
+  else if (h < 10.3) tip = 'света мало — сонливость имеет физиологическую причину. Важное планируйте на светлые часы';
+  else if (h < 12.5) tip = diff > 0
+    ? 'света прибавляется с каждым днём — энергия возвращается сама'
+    : 'световой день убывает — берегите силы, но планы не отменяются: главное на светлые часы';
+  else if (h < 15) tip = diff > 0 ? 'световой день быстро растёт — можно больше успевать' : 'света пока много — сил хватает';
+  else tip = 'света много — можно дольше бодрствовать и позже ложиться, как бывает летом';
+  return '<div class="card"><h2>Сезон и свет</h2>' +
+    '<div class="hint" style="margin:4px 0">Световой день ≈ ' + hh + ' ч ' + (mm ? mm + ' мин' : '') +
+    (diff ? ', ' + (diff > 0 ? 'прибавляется' : 'убывает') + ' ~' + Math.abs(diff) + ' мин в день' : '') + '</div>' +
+    '<div class="hint" style="margin:4px 0">Сейчас: ' + tip + '.</div>' +
+    '<div class="hint" style="margin:4px 0">Ориентир на год: самый короткий день — 22 декабря (≈7 ч), самый длинный — 21 июня (≈17 ч). Подъём энергии — с конца февраля, спад — с середины октября. Это не повод отложить дела: просто главное — на светлые часы.</div>' +
+    '</div>';
+}
+
 /* ---------- вкладки ---------- */
 
 const MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>';
@@ -559,7 +589,7 @@ RENDER.cal = function () {
     '<button class="mic" id="micNote" onclick="startVoice(\'note\')" aria-label="Надиктовать заметку">' + MIC + '</button>' +
     '</div>' +
     '<textarea id="dayNote" class="inp" placeholder="Что хочется записать…" oninput="onNoteInput(this.value)">' + esc(DB.notes[selDate] || '') + '</textarea>' +
-    '</div>' + cyc;
+    '</div>' + cyc + seasonCard();
 };
 
 /* ---------- еда ---------- */
