@@ -4,7 +4,7 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
-const APP_VER = 17;
+const APP_VER = 18;
 
 function blank() {
   return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [] };
@@ -1346,8 +1346,22 @@ RENDER.prof = function () {
     '<label class="f">Восстановить из файла</label><input class="inp" type="file" accept=".json,application/json" onchange="importFile(this.files[0])">' +
     '<div class="hint">Все записи хранятся в этом приложении на телефоне. Раз в месяц скачивайте копию — это файл со всеми данными, ничего не потеряется.</div>' +
     '</div>' +
+    '<button class="btn ghost small" style="display:flex;margin:0 auto 6px" onclick="checkUpdate()">Проверить обновления</button>' +
     '<div class="hint" style="text-align:center;margin:0 0 6px">Дневник · версия ' + APP_VER + '</div>';
 };
+
+function checkUpdate() {
+  if (!('serviceWorker' in navigator)) { toast('Здесь обновления недоступны'); return; }
+  toast('Проверяю обновления…');
+  navigator.serviceWorker.getRegistration().then(function (reg) {
+    if (!reg) { toast('Обновление не нашлось — закройте и откройте дневник'); return; }
+    reg.update().then(function () {
+      setTimeout(function () {
+        if (!reg.installing && !reg.waiting) toast('У вас уже последняя версия ' + APP_VER);
+      }, 2500);
+    }).catch(function () { toast('Не вышло проверить — проверьте интернет'); });
+  });
+}
 
 /* ---------- запуск ---------- */
 
