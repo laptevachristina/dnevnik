@@ -4,7 +4,7 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
-const APP_VER = 19;
+const APP_VER = 20;
 
 function blank() {
   return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [] };
@@ -987,6 +987,17 @@ function addStepsManual() {
   DB.steps[k].m += v;
   save(); renderAct();
 }
+function setStepsTotal() {
+  const v = parseInt($('stepsAdd').value, 10);
+  if (isNaN(v) || v < 0) { toast('Впишите верное число шагов в поле'); return; }
+  const k = actDate || todayKey();
+  if (!DB.steps[k]) DB.steps[k] = { m: 0, s: 0 };
+  const st = DB.steps[k];
+  if (v >= (st.s || 0)) st.m = v - (st.s || 0);
+  else { st.s = v; st.m = 0; if (k === todayKey()) sen.count = Math.min(sen.count || 0, v); }
+  save(); renderAct();
+  toast('Исправила: ' + fmtInt(v) + ' шагов');
+}
 function resetSteps() {
   const k = actDate || todayKey();
   DB.steps[k] = { m: 0, s: 0 };
@@ -1068,7 +1079,8 @@ RENDER.act = function () {
     '<input id="stepsAdd" class="inp" type="number" inputmode="numeric" placeholder="Например, 2500">' +
     '<button class="btn pink" onclick="addStepsManual()">+ шаги</button>' +
     '</div>' +
-    '<div class="hint">Шаги за другой день: выберите дату сверху и впишите число из «Здоровье» — оно попадёт в график. Пока шагомер включён, экран не гаснет — телефон в кармане продолжает считать.</div>' +
+    '<div style="margin-top:8px"><button class="btn ghost small" onclick="setStepsTotal()">Исправить — в поле верное общее число</button></div>' +
+    '<div class="hint">Шаги за другой день: выберите дату сверху и впишите число из «Здоровье» — оно попадёт в график. Ошиблись в цифре — впишите верное общее число и нажмите «Исправить». Пока шагомер включён, экран не гаснет — телефон в кармане продолжает считать.</div>' +
     '</div>' +
     '<div class="card">' +
     '<h2>Неделя шагов</h2>' + barChart7(k) +
