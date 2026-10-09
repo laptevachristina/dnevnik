@@ -30,7 +30,23 @@
 <script src="app.js"></script>
 <script>
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(function(){});
+  navigator.serviceWorker.register('sw.js').then(function(reg) {
+    reg.update();
+    setInterval(function() { reg.update(); }, 30 * 60 * 1000);
+    reg.addEventListener('updatefound', function() {
+      var nw = reg.installing;
+      if (!nw) return;
+      nw.addEventListener('statechange', function() {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          toast('Скачала новую версию дневника — обновляю');
+        }
+      });
+    });
+  }).catch(function(){});
+  var reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function() {
+    if (!reloaded) { reloaded = true; location.reload(); }
+  });
 }
 </script>
 </body>

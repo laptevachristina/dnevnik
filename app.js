@@ -4,6 +4,7 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
+const APP_VER = 17;
 
 function blank() {
   return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [] };
@@ -1344,7 +1345,8 @@ RENDER.prof = function () {
     '<button class="btn ghost" style="margin-top:8px;width:100%" onclick="importHistorySheet()">Перенести старые записи</button>' +
     '<label class="f">Восстановить из файла</label><input class="inp" type="file" accept=".json,application/json" onchange="importFile(this.files[0])">' +
     '<div class="hint">Все записи хранятся в этом приложении на телефоне. Раз в месяц скачивайте копию — это файл со всеми данными, ничего не потеряется.</div>' +
-    '</div>';
+    '</div>' +
+    '<div class="hint" style="text-align:center;margin:0 0 6px">Дневник · версия ' + APP_VER + '</div>';
 };
 
 /* ---------- запуск ---------- */
