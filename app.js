@@ -4,7 +4,7 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
-const APP_VER = 21;
+const APP_VER = 22;
 
 function blank() {
   return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [], sleep: {} };
@@ -428,7 +428,7 @@ function startVoice(target) {
     const heardNothing = !recGot;
     rec = null; micUI(false);
     if (recTarget === 'note' && $('dayNote')) onNoteInput($('dayNote').value);
-    if (recTarget === 'food' && recGot && $('fName') && $('fName').value.trim()) addFoodList(true);
+    if (recTarget === 'food' && recGot && $('fName') && $('fName').value.trim()) fillDraft();
     if (heardNothing) toast('Ничего не расслышала — говорите чуть громче у самого телефона и нажмите микрофон ещё раз');
   };
   rec.onerror = e => {
@@ -732,39 +732,110 @@ function pushFood(i, amt, unit, rate) {
   DB.food[foodDate].push({ id: uid(), base: PRODUCTS[i][0], amt: Math.round(amt), unit, rate, kcal });
   return kcal;
 }
-function pushFoodPhrase(pt) {
-  const r = parseFood(pt);
-  if (r.i < 0) return null;
-  const p = PRODUCTS[r.i];
-  const per100 = !p[2] || r.unit === 'г' || r.unit === 'мл';
-  const amt = r.amt != null ? r.amt : (per100 ? 100 : 1);
-  return pushFood(r.i, amt, per100 ? (r.unit || 'г') : p[2], per100 ? p[1] / 100 : p[1]);
-}
-const foodPlural = n => n % 10 === 1 && n % 100 !== 11 ? 'блюдо' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'блюда' : 'блюд';
-function addFoodList(fromVoice) {
+let draftFood = [];
+function fillDraft() {
   const el = $('fName');
   const raw = el ? el.value.trim() : '';
   if (!raw) return false;
   const parts = raw.split(/[,;\n]+|(?:^|\s)и\s+/i).map(s => s.trim()).filter(Boolean);
-  if (parts.length === 1 && !fromVoice) return false; // одиночное блюдо — обычная кнопка «Добавить»
-  let added = 0, sum = 0;
+  let got = 0;
   const missed = [];
-  parts.forEach(pt => { const k = pushFoodPhrase(pt); if (k == null) missed.push(pt); else { added++; sum += k; } });
-  if (added) {
-    save(); renderFood();
-    toast('Добавила ' + added + ' ' + foodPlural(added) + ', ' + fmtInt(sum) + ' ккал — граммы поправьте в списке');
-  }
+  parts.forEach(pt => {
+    const r = parseFood(pt);
+    if (r.i >= 0) {
+      const p = PRODUCTS[r.i];
+      const per100 = !p[2] || r.unit === 'г' || r.unit === 'мл';
+      draftFood.push({
+        id: uid(), name: p[0],
+        amt: r.amt, unit: per100 ? (r.unit || 'г') : p[2],
+        rate: per100 ? p[1] / 100 : p[1],
+        kcal: r.amt != null ? Math.round((per100 ? p[1] / 100 : p[1]) * r.amt) : null
+      });
+      got++;
+    } else missed.push(pt);
+  });
   const fe = $('fName'), fs = $('fSug');
   if (missed.length && fe) {
     fe.value = missed.join(', ');
-    if (fs) fs.textContent = 'Это не поняла — поправьте и нажмите «Добавить» или впишите калории сами.';
-  } else if (added && fe) fe.value = '';
+    if (fs) fs.textContent = 'Не поняла: поправьте название в поле — или в списке ниже, там его можно редактировать.';
+  } else if (fe) fe.value = '';
+  renderDraft();
+  if (got) toast('Записала ' + got + ' ' + foodPlural(got) + ' — впишите количество и нажмите «Записать всё»');
   return true;
+}
+const foodPlural = n => n % 10 === 1 && n % 100 !== 11 ? 'блюдо' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'блюда' : 'блюд';
+function editDraftName(id, v) {
+  const r = draftFood.find(x => x.id === id);
+  if (!r) return;
+  r.name = v;
+  const rr = parseFood(v);
+  const kc = $('dk_' + id);
+  if (rr.i >= 0) {
+    const p = PRODUCTS[rr.i];
+    const per100 = !p[2] || rr.unit === 'г' || rr.unit === 'мл';
+    r.rate = per100 ? p[1] / 100 : p[1];
+    r.unit = per100 ? (rr.unit || 'г') : p[2];
+    if (r.amt != null && r.amt > 0) r.kcal = Math.round(r.rate * r.amt); else r.kcal = null;
+    if (kc) kc.textContent = r.kcal != null ? fmtInt(r.kcal) : '—';
+  } else if (kc) kc.textContent = '?';
+}
+function editDraftAmt(id, v) {
+  const r = draftFood.find(x => x.id === id);
+  if (!r) return;
+  const a = num(v);
+  r.amt = a > 0 ? a : null;
+  r.kcal = r.amt != null ? Math.round(r.rate * r.amt) : null;
+  const kc = $('dk_' + id);
+  if (kc) kc.textContent = r.kcal != null ? fmtInt(r.kcal) : '—';
+}
+function delDraft(id) {
+  draftFood = draftFood.filter(x => x.id !== id);
+  renderDraft();
+}
+function commitDraft() {
+  if (!draftFood.length) return;
+  let added = 0, sum = 0;
+  const bad = [];
+  draftFood.forEach(r => {
+    const rr = parseFood(r.name);
+    if (rr.i < 0) { bad.push(r.name); return; }
+    const p = PRODUCTS[rr.i];
+    const per100 = !p[2] || rr.unit === 'г' || rr.unit === 'мл';
+    const amt = r.amt > 0 ? r.amt : (rr.amt != null ? rr.amt : (per100 ? 100 : 1));
+    const unit = per100 ? (rr.unit || r.unit || 'г') : p[2];
+    sum += pushFood(rr.i, amt, unit, per100 ? p[1] / 100 : p[1]);
+    added++;
+  });
+  draftFood = [];
+  if (added) { save(); renderFood(); }
+  toast(added
+    ? 'Записала ' + added + ' ' + foodPlural(added) + ' — ' + fmtInt(sum) + ' ккал' + (bad.length ? '. Не нашла: ' + bad.slice(0, 2).join(', ') : '')
+    : 'Ничего не записала' + (bad.length ? ': ' + bad.slice(0, 2).join(', ') : ''));
+  renderDraft();
+}
+function renderDraft() {
+  const box = $('draftBox');
+  if (!box) return;
+  if (!draftFood.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div style="margin-top:12px;border-top:1px solid var(--pink-100);padding-top:10px">' +
+    draftFood.map(r => '<div class="prod">' +
+      '<input class="inp" style="flex:1;min-width:0;padding:8px 10px" value="' + esc(r.name) + '" oninput="editDraftName(\'' + r.id + '\', this.value)">' +
+      '<input class="g" type="number" inputmode="decimal" placeholder="' + (r.unit === 'шт' || r.unit === 'порция' ? '1' : '100') + '" value="' + (r.amt != null ? r.amt : '') + '" oninput="editDraftAmt(\'' + r.id + '\', this.value)">' +
+      '<span class="unit-lbl">' + r.unit + '</span>' +
+      '<span class="kc" id="dk_' + r.id + '">' + (r.kcal != null ? fmtInt(r.kcal) : '—') + '</span>' +
+      '<button class="del" onclick="delDraft(\'' + r.id + '\')">×</button>' +
+      '</div>').join('') +
+    '<div style="margin-top:10px"><button class="btn" style="width:100%" onclick="commitDraft()">Записать всё</button></div>' +
+    '</div>';
 }
 function addFood() {
   const name = $('fName').value.trim();
-  if (!name) { toast('Напишите, что съели'); return; }
-  if (addFoodList(false)) return;
+  if (!name) {
+    if (draftFood.length) { toast('Впишите количество в списке и нажмите «Записать всё»'); return; }
+    toast('Напишите, что съели'); return;
+  }
+  const parts = name.split(/[,;\n]+|(?:^|\s)и\s+/i).map(s => s.trim()).filter(Boolean);
+  if (parts.length > 1) { fillDraft(); return; }
   const kcal = num($('fKcal').value);
   if (isNaN(kcal) || kcal < 0 || kcal > 5000) { toast('Проверьте калории'); return; }
   if (fMatchI >= 0) {
@@ -888,6 +959,7 @@ RENDER.food = function () {
     '<button class="mic" id="micFood" onclick="startVoice(\'food\')" aria-label="Надиктовать блюдо">' + MIC + '</button>' +
     '</div>' +
     '<div class="hint" id="fSug" style="margin:6px 0 0"></div>' +
+    '<div id="draftBox"></div>' +
     '<div class="row" style="margin-top:8px;align-items:center">' +
     '<input id="fAmt" class="inp" type="number" inputmode="decimal" value="100" oninput="foodCalc()" aria-label="Количество">' +
     '<span id="fAmtLbl" style="flex:0 0 auto;color:var(--muted);font-size:13px">г</span>' +
@@ -895,8 +967,9 @@ RENDER.food = function () {
     '<button class="btn" style="flex:0 0 auto" onclick="addFood()">Добавить</button>' +
     '</div>' +
     '<div style="margin-top:10px"><button class="btn pink" style="width:100%" onclick="openProducts()">Справочник: ' + PRODUCTS.length + ' продуктов</button></div>' +
-    '<div class="hint">Надиктуйте список целиком: «творог, кофе с молоком, яблоко» — добавлю всё сразу, граммы поправите в списке. Количество можно сразу: 150 г, 200 мл, 2 ч. л., 1 шт. Калории считаю сама. Значения приблизительные.</div>' +
+    '<div class="hint">Надиктуйте список целиком: «творог, кофе с молоком, яблоко» — всё попадёт в список ниже. Впишите количество в строки и нажмите «Записать всё». Количество можно сказать сразу: 150 г, 200 мл, 2 ч. л., 1 шт. Калории считаю сама. Значения приблизительные.</div>' +
     '</div>';
+  renderDraft();
 };
 
 /* ---------- активность ---------- */
