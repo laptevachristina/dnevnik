@@ -4,7 +4,7 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
-const APP_VER = 24;
+const APP_VER = 25;
 
 function blank() {
   return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [], sleep: {}, water: {} };
@@ -980,7 +980,7 @@ function waterCard() {
     '<input id="wMl" class="inp" type="number" inputmode="numeric" placeholder="своё число, мл">' +
     '<button class="btn" style="flex:0 0 auto" onclick="addWater()">+</button>' +
     '</div>' +
-    '<div class="hint">Чай и кофе без сахара тоже считаются водой — наука подтверждает: у привыкших к кофеину они воду не выводят. Сладкие напитки несут калории (они в еде), алкоголь воду вычитает. Еда даёт ещё около четверти воды сверху.</div>' +
+    '<div class="hint">Чай и кофе без сахара засчитываются в норму: из чашки почти вся вода остаётся в организме, кофеин у привычных к нему людей почти ничего не вычитает. Чистая вода — лучшая основа: без калорий и без кофеина вечером. Сладкие напитки несут калории (они в еде), алкоголь воду вычитает. Еда даёт ещё около четверти воды сверху.</div>' +
     '</div>';
 }
 
