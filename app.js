@@ -4,10 +4,10 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
-const APP_VER = 22;
+const APP_VER = 23;
 
 function blank() {
-  return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [], sleep: {} };
+  return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [], sleep: {}, water: {} };
 }
 function load() {
   try { const d = JSON.parse(localStorage.getItem(SKEY)); if (d && typeof d === 'object') return d; } catch (e) {}
@@ -15,6 +15,7 @@ function load() {
 }
 let DB = load();
 DB.sleep = DB.sleep || {};
+DB.water = DB.water || {};
 let pendImport = null;
 let saveWarned = false;
 function save() {
@@ -549,6 +550,8 @@ RENDER.cal = function () {
   if (foodSum) bits.push('Еда: ' + fmtInt(foodSum) + ' ккал');
   if (st) bits.push('Шаги: ' + fmtInt(st));
   if (slH != null) bits.push('Сон: ' + fmtDurH(slH) + (slH < 6.5 ? ' — возможно, спад энергии' : ''));
+  const wMl = (DB.water || {})[selDate];
+  if (wMl) bits.push('Вода: ' + (wMl >= 1000 ? fmt1(wMl / 1000) + ' л' : fmtInt(wMl) + ' мл'));
   const dayStats = bits.length ? '<div class="hint">' + bits.join(' · ') + '</div>' : '';
 
   let cyc = '';
@@ -918,6 +921,59 @@ function foodDayLabel(k) {
   return d.getDate() + ' ' + MONTHS[d.getMonth()];
 }
 
+/* ---------- вода ---------- */
+
+function waterNorm() {
+  const kg = latestKg(), age = calcAge();
+  if (!kg) return null;
+  const ml = (age && age >= 55 ? 30 : 33) * kg;
+  return Math.round(Math.min(4000, Math.max(1200, ml)) / 50) * 50;
+}
+function addWater(v) {
+  const k = foodDate;
+  if (v == null) {
+    v = parseInt($('wMl').value, 10);
+    if (isNaN(v) || v === 0) { toast('Сколько миллилитров?'); return; }
+  }
+  DB.water[k] = Math.max(0, (DB.water[k] || 0) + v);
+  save(); renderFood();
+}
+function waterCard() {
+  const k = foodDate;
+  const ml = DB.water[k] || 0;
+  const norm = waterNorm();
+  const pct = norm ? Math.min(100, Math.round(ml / norm * 100)) : 0;
+  let done7 = 0;
+  if (norm) {
+    for (let i = 0; i < 7; i++) {
+      const kk = dkey(new Date(parseKey(k).getTime() - i * DAY));
+      if ((DB.water[kk] || 0) >= norm) done7++;
+    }
+  }
+  const verdict = !norm
+    ? 'Заполните вес во «Теле» и дату рождения в «Профиле» — посчитаю норму точнее.'
+    : ml >= norm
+      ? 'Норма выполнена — отлично.'
+      : ml >= norm * 0.5
+        ? 'Осталось ' + fmtInt(norm - ml) + ' мл — пейте небольшими порциями до вечера.'
+        : 'Пока меньше половины нормы. Держите стакан рядом — так проще всего.';
+  return '<div class="card"><h3>Вода</h3>' +
+    '<div class="total"><span>Выпито — ' + foodDayLabel(k) + '</span><b>' + fmtInt(ml) + (norm ? ' / ' + fmtInt(norm) : '') + ' мл</b></div>' +
+    (norm ? '<div class="progress"><i style="width:' + pct + '%"></i></div><div class="hint" style="margin:2px 0 0">' + pct + '% от нормы' + (done7 ? ' · на этой неделе норма выполнена ' + done7 + ' дн. из 7' : '') + '</div>' : '') +
+    '<div class="hint" style="margin:6px 0 0">' + verdict + '</div>' +
+    '<div class="row" style="margin-top:10px">' +
+    '<button class="btn ghost small" onclick="addWater(250)">+ стакан 250</button>' +
+    '<button class="btn ghost small" onclick="addWater(500)">+ бутылка 500</button>' +
+    '<button class="btn ghost small" onclick="addWater(-250)">− 250</button>' +
+    '</div>' +
+    '<div class="row" style="margin-top:8px">' +
+    '<input id="wMl" class="inp" type="number" inputmode="numeric" placeholder="своё число, мл">' +
+    '<button class="btn" style="flex:0 0 auto" onclick="addWater()">+</button>' +
+    '</div>' +
+    '<div class="hint">Чай и кофе без сахара тоже считаются водой — наука подтверждает: у привыкших к кофеину они воду не выводят. Сладкие напитки несут калории (они в еде), алкоголь воду вычитает. Еда даёт ещё около четверти воды сверху.</div>' +
+    '</div>';
+}
+
 RENDER.food = function () {
   const el = $('tab-food');
   const list = DB.food[foodDate] || [];
@@ -952,6 +1008,7 @@ RENDER.food = function () {
     '<div class="card">' +
     '<input class="inp" type="date" value="' + foodDate + '" onchange="setFoodDate(this.value)">' +
     '<h3>Что я съела</h3>' + items + totals + '</div>' +
+    waterCard() +
     '<div class="card">' +
     '<h3>Добавить</h3>' +
     '<div class="row" style="align-items:stretch">' +
