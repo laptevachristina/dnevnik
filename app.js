@@ -4,7 +4,7 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
-const APP_VER = 25;
+const APP_VER = 26;
 
 function blank() {
   return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [], sleep: {}, water: {} };
@@ -878,6 +878,20 @@ function delFood(id) {
   save(); renderFood();
 }
 
+function openInfo() {
+  openSheet(
+    '<div class="sheet-head"><b>Почему вес прыгает</b><button class="btn small ghost" onclick="closeSheet()">Закрыть</button></div>' +
+    '<div class="hint" style="margin:0 0 10px">±1–2 кг за сутки — это норма: вода и содержимое кишечника, а не жир. Килограмм жира — это примерно 7700 ккал, столько за день не набирают.</div>' +
+    '<div class="item"><span class="nm"><b>Еда в пути.</b> В пищеварении всегда 1–2 кг. Сходили в туалет — минус, не успели — плюс.</span></div>' +
+    '<div class="item"><span class="nm"><b>Соль.</b> Суши, чипсы, солёная рыба на ужин — утром +0,5–1,5 кг воды. Уходит за день-два, когда еда возвращается к обычной.</span></div>' +
+    '<div class="item"><span class="nm"><b>Углеводы.</b> Запас энергии в мышцах держит воду — примерно 3 г воды на каждый грамм. День на пасте и хлебе — плюс, день без углеводов — минус. Не жир ни туда, ни сюда.</span></div>' +
+    '<div class="item"><span class="nm"><b>Цикл.</b> Перед месячными гормоны задерживают 1–2 кг воды — это отёк, а не набор веса. На графике веса эти дни жёлтые, после месячных уходит само.</span></div>' +
+    '<div class="item"><span class="nm"><b>Тренировки.</b> После непривычной нагрузки мышцы восстанавливаются и держат воду день-два. Крепатура — плюс на весах, но не лишний жир.</span></div>' +
+    '<div class="item"><span class="nm"><b>Ночь.</b> Во сне тело теряет 0,5–1 кг с дыханием и потом — утро всегда «легче» вечера.</span></div>' +
+    '<div class="item"><span class="nm"><b>Алкоголь.</b> Вечером обезвоживает, на следующий день тело задерживает воду «с запасом». И сну вредит — а недосып тянет к сладкому.</span></div>' +
+    '<div class="hint" style="margin:10px 0 0;color:var(--sage-600)">Честное взвешивание: утром, после туалета, до еды и воды. Смотрите на линию за неделю-две, а не на разницу двух дней — график веса как раз этим помогает.</div>'
+  );
+}
 function openProducts() {
   openSheet(
     '<div class="sheet-head"><b>Справочник продуктов</b><button class="btn small ghost" onclick="closeSheet()">Готово</button></div>' +
@@ -1484,7 +1498,7 @@ RENDER.body = function () {
   }
 
   el.innerHTML =
-    '<div class="card"><h2>Вес</h2>' +
+    '<div class="card"><h2>Вес<button class="ibtn" onclick="openInfo()" aria-label="Почему вес прыгает">i</button></h2>' +
     (last ? '<div class="hint" style="margin:0 0 4px">сейчас: ' + fmt1(last.kg) + ' кг · ' + dShort(last.d) + '</div>' + wDelta : '<div class="empty">Первая запись — и пойдут графики</div>') +
     '<div class="row" style="margin-top:8px">' +
     '<input id="wKg" class="inp" type="number" inputmode="decimal" placeholder="вес, кг" value="' + (last ? last.kg : '') + '">' +
