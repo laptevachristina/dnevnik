@@ -4,7 +4,7 @@
 
 const $ = id => document.getElementById(id);
 const SKEY = 'dnevnik_v1';
-const APP_VER = 23;
+const APP_VER = 24;
 
 function blank() {
   return { profile: {}, period: {}, notes: {}, food: {}, steps: {}, workouts: {}, weight: [], measures: [], sleep: {}, water: {} };
@@ -938,6 +938,15 @@ function addWater(v) {
   DB.water[k] = Math.max(0, (DB.water[k] || 0) + v);
   save(); renderFood();
 }
+function waterTip(ml, norm) {
+  if (!norm) return '';
+  const p = ml / norm;
+  if (ml === 0) return 'Начните со стакана утром: за ночь тело теряет воду, а жажда просыпается позже настоящей нехватки.';
+  if (p < 0.5) return 'Тело примерно на 60% состоит из воды, все реакции обмена идут в ней. При нехватке обмен слегка замедляется, а внимание падает уже при потере 1–2% воды.';
+  if (p < 0.8) return 'Стакан воды за полчаса до еды слегка приглушает аппетит — помогает не переесть.';
+  if (p < 1) return 'Вода помогает почкам выводить продукты обмена. Пейте понемногу до вечера — лучше много раз по чуть-чуть, чем залпом.';
+  return 'Выпитая вода ненадолго ускоряет обмен — эффект небольшой, но приятный. Больше 3 литров в день без жажды и жары не нужно.';
+}
 function waterCard() {
   const k = foodDate;
   const ml = DB.water[k] || 0;
@@ -961,6 +970,7 @@ function waterCard() {
     '<div class="total"><span>Выпито — ' + foodDayLabel(k) + '</span><b>' + fmtInt(ml) + (norm ? ' / ' + fmtInt(norm) : '') + ' мл</b></div>' +
     (norm ? '<div class="progress"><i style="width:' + pct + '%"></i></div><div class="hint" style="margin:2px 0 0">' + pct + '% от нормы' + (done7 ? ' · на этой неделе норма выполнена ' + done7 + ' дн. из 7' : '') + '</div>' : '') +
     '<div class="hint" style="margin:6px 0 0">' + verdict + '</div>' +
+    '<div class="hint" style="color:var(--sage-600);margin:6px 0 0">' + waterTip(ml, norm) + '</div>' +
     '<div class="row" style="margin-top:10px">' +
     '<button class="btn ghost small" onclick="addWater(250)">+ стакан 250</button>' +
     '<button class="btn ghost small" onclick="addWater(500)">+ бутылка 500</button>' +
